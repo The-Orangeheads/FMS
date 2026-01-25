@@ -1,0 +1,36 @@
+# API Framework
+fastapi
+uvicorn
+
+# Data Validation
+pydantic
+pydantic-settings
+python-dotenv
+
+# File Processing
+PyPDF2
+python-docx
+EasyOCR
+Pillow
+
+# Embeddings
+sentence-transformers
+torch
+numpy
+scipy
+
+# Vector Database
+lancedb
+
+# Duplicate Detection
+scikit-learn
+
+# Testing
+pytest
+pytest-cov
+pytest-asyncio
+httpx
+
+# Development
+black
+flake8
