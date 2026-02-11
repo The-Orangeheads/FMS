@@ -6,7 +6,7 @@ from services.embedding import embedding_service
 router = APIRouter(prefix="/embedding", tags=["Embedding"])
 
 @router.post("/embed", response_model=EmbeddingResponse)
-async def create_embeddings(request: EmbeddingRequest):
+def create_embeddings(request: EmbeddingRequest):
     """
     Receives text chunks or images, and returns vectors with metadata.
     """
