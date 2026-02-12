@@ -1,7 +1,7 @@
 # embedding_controller.py
 from fastapi import APIRouter, HTTPException, Depends
-from schemas import EmbeddingRequest, EmbeddingResponse
-from services.embedding import embedding_service
+from app.schemas import EmbeddingRequest, EmbeddingResponse
+from app.services.embedding import embedding_service
 
 router = APIRouter(prefix="/embedding", tags=["Embedding"])
 
