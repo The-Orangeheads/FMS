@@ -1,0 +1,152 @@
+[
+  {
+    "question": "According to Bray and Sorey, what are the primary attributes of top-performing Sales Development Reps (SDRs)?",
+    "expected_file": "Sales Development - Cracking the Code of Outbound Sales.pdf",
+    "expected_text_snippet": "People who perform the best, however, typically have the following attributes: * Fearless: Talking to strangers and being told no thirty times in a row is not a big deal."
+  },
+  {
+    "question": "What is the difference between venture-backed and bootstrapped companies regarding growth milestones?",
+    "expected_file": "Sales Development - Cracking the Code of Outbound Sales.pdf",
+    "expected_text_snippet": "Venture-Backed: Rapidly spend money and focus on growth. If milestones are not hit every eighteen to thirty-six months, the company will die. Bootstrapped: Focused on stability and profitability first and then growth."
+  },
+  {
+    "question": "How does 'vesting' work for stock options granted to an SDR?",
+    "expected_file": "Sales Development - Cracking the Code of Outbound Sales.pdf",
+    "expected_text_snippet": "Most companies offer equity that vests over four years with a one-year cliff. That means: * You own nothing until you reach your one-year anniversary (the cliff), at which point you own 25 percent."
+  },
+  {
+    "question": "What is the 'Ben Franklin' close described by Zig Ziglar?",
+    "expected_file": "Secrets of Closing the Sale.pdf",
+    "expected_text_snippet": "When he was confronted with a difficult decision, he would take a sheet of paper and draw a line down the center. On the left-hand side he wrote ‘Reasons For,’ and on the right-hand side he wrote ‘Ideas Opposed.’"
+  },
+  {
+    "question": "What does Ziglar suggest a salesperson should do when a prospect tries to change the subject to unrelated items?",
+    "expected_file": "Secrets of Closing the Sale.pdf",
+    "expected_text_snippet": "First, never lose sight of your objective, which is to make a sale. Second, when the prospect changes the subject, you acknowledge the change, comment briefly, and tie it to the diversion."
+  },
+  {
+    "question": "According to Cavett Robert, what persuades a prospect more: logic or conviction?",
+    "expected_file": "Secrets of Closing the Sale.pdf",
+    "expected_text_snippet": "The prospect is persuaded more by the depth of your conviction than he is by the height of your logic."
+  },
+  {
+    "question": "What is the primary difference between an 'Idea' and an 'Opportunity' in a business context?",
+    "expected_file": "Starting a Business QuickStart Guide.pdf",
+    "expected_text_snippet": "Everything that has been created by people started out as an idea, but not everything that has been an idea has been created. This is the root of the value assigned to opportunities: execution."
+  },
+  {
+    "question": "How is 'break-even pricing' defined?",
+    "expected_file": "Starting a Business QuickStart Guide.pdf",
+    "expected_text_snippet": "Break-even pricing is centered on the business’s break-even point. The break-even point is the equilibrium point where costs equal revenue."
+  },
+  {
+    "question": "What are 'indirect competitors' according to the guide?",
+    "expected_file": "Starting a Business QuickStart Guide.pdf",
+    "expected_text_snippet": "They offer a solution to the same problem, but their solution is different... indirect competitors compete by offering different things to the same market."
+  },
+  {
+    "question": "How does Benjamin Graham distinguish between investment and speculation?",
+    "expected_file": "The Intelligent Investor - Rev_ Ed.pdf",
+    "expected_text_snippet": "An investment operation is one which, upon thorough analysis promises safety of principal and an adequate return. Operations not meeting these requirements are speculative."
+  },
+  {
+    "question": "What is the 'basic compromise policy' Graham suggests for defensive investors regarding bond and stock ratios?",
+    "expected_file": "The Intelligent Investor - Rev_ Ed.pdf",
+    "expected_text_snippet": "they may choose between maintaining a simple 50-50 division between the two components or a ratio, dependent on their judgment, varying between a minimum of 25% and a maximum of 75% of either."
+  },
+  {
+    "question": "What warning signs should an investor look for in an adviser's language?",
+    "expected_file": "The Intelligent Investor - Rev_ Ed.pdf",
+    "expected_text_snippet": "lingo that should set off warning bells: ‘offshore’ ‘the opportunity of a lifetime’ ‘prime bank’ ‘This baby’s gonna move.’ ‘guaranteed’ ‘You need to hurry.’"
+  },
+  {
+    "question": "How does Robert Greene define 'Human Nature'?",
+    "expected_file": "The Laws of Human Nature.pdf",
+    "expected_text_snippet": "Human nature stems from the particular wiring of our brains, the configuration of our nervous system, and the way we humans process emotions, all of which developed and emerged over the course of the five million years or so of our evolution."
+  },
+  {
+    "question": "What can Shackleton's leadership during the Endurance mission teach us about 'mood reading'?",
+    "expected_file": "The Laws of Human Nature.pdf",
+    "expected_text_snippet": "At certain moments, he could feel the boredom of the men in how they carried themselves, in how they talked less and less to one another. To combat this, he organized sporting events on the ice."
+  },
+  {
+    "question": "Why is the 'bias of conviction' dangerous in a leader?",
+    "expected_file": "The Laws of Human Nature.pdf",
+    "expected_text_snippet": "if they express an opinion with heated words and gestures... and a deep well of conviction, it must mean they have examined the idea carefully... This bias makes us susceptible."
+  },
+  {
+    "question": "Why did Rick Guerin fall behind Buffett and Munger despite being 'just as smart'?",
+    "expected_file": "The Psychology of Money - Timeless lessons on wealth, greed, and happiness.pdf",
+    "expected_text_snippet": "Rick was just as smart as us, but he was in a hurry. What happened was that in the 1973-1974 downturn, Rick was levered with margin loans. And the stock market went down almost 70%."
+  },
+  {
+    "question": "What is the 'Sagan quote' regarding economic history and surprises?",
+    "expected_file": "The Psychology of Money - Timeless lessons on wealth, greed, and happiness.pdf",
+    "expected_text_snippet": "Stanford professor Scott Sagan once said... 'Things that have never happened before happen all the time.'"
+  },
+  {
+    "question": "Why is it dangerous to study extreme examples of success like billionaires?",
+    "expected_file": "The Psychology of Money - Timeless lessons on wealth, greed, and happiness.pdf",
+    "expected_text_snippet": "The more extreme the outcome... the more likely the outcome was influenced by extreme ends of luck or risk... You'll get closer to actionable takeaways by looking for broad patterns."
+  },
+  {
+    "question": "What is the '30-Day Rule' in Fanatical Prospecting?",
+    "expected_file": "Fanatical Prospecting - The ultimate guide to opening sales conversations.pdf",
+    "expected_text_snippet": "The implication of the 30-Day Rule is simple. Miss a day of prospecting and it will tend to bite you sometime in the next 90 days."
+  },
+  {
+    "question": "What are the 'Three Ps' that hold salespeople back?",
+    "expected_file": "Fanatical Prospecting - The ultimate guide to opening sales conversations.pdf",
+    "expected_text_snippet": "Chapter 7: The Three Ps That Are Holding You Back: Procrastination, Perfectionism, Paralysis from Analysis."
+  },
+  {
+    "question": "What is the difference between 'Golden Hours' and 'Platinum Hours'?",
+    "expected_file": "Fanatical Prospecting - The ultimate guide to opening sales conversations.pdf",
+    "expected_text_snippet": "During the Golden Hours... your total focus must be on prospecting and customer engagement activities... tasks that will have to wait until before or after the Golden Hours... We call these periods the Platinum Hours."
+  },
+  {
+    "question": "What is the second basic element of principled negotiation in 'Getting to Yes'?",
+    "expected_file": "Getting to Yes - Negotiating an Agreement Without Giving In.pdf",
+    "expected_text_snippet": "The second basic element of the method is: Focus on interests, not positions."
+  },
+  {
+    "question": "How does a 'BATNA' affect a negotiation?",
+    "expected_file": "Getting to Yes - Negotiating an Agreement Without Giving In.pdf",
+    "expected_text_snippet": "Whether you should or should not agree on something in a negotiation depends entirely upon the attractiveness to you of the best available alternative."
+  },
+  {
+    "question": "What are some symbolic gestures recommended to manage emotions during a negotiation?",
+    "expected_file": "Getting to Yes - Negotiating an Agreement Without Giving In.pdf",
+    "expected_text_snippet": "Make emotions explicit and acknowledge them as legitimate Allow the other side to let off steam Don’t react to emotional outbursts Use symbolic gestures."
+  },
+  {
+    "question": "What is the 'CEO Method' for generating investment money?",
+    "expected_file": "I Will Teach You to Be Rich, Second Edition.pdf",
+    "expected_text_snippet": "Follow my CEO Method: Cut costs, Earn more, and Optimize your existing spending."
+  },
+  {
+    "question": "What is the '85 Percent Solution' for taxes?",
+    "expected_file": "I Will Teach You to Be Rich, Second Edition.pdf",
+    "expected_text_snippet": "By moving toward investing in tax-advantaged retirement accounts, you’ll sidestep the vast majority of tax concerns. Investing in tax-advantaged retirement accounts is the 85 Percent Solution for taxes."
+  },
+  {
+    "question": "According to Sethi, what is the 'Big Win' regarding a starting salary?",
+    "expected_file": "I Will Teach You to Be Rich, Second Edition.pdf",
+    "expected_text_snippet": "Your starting salary is even more important than you think, because it sets the bar for future raises... A $1,000 or $2,000 salary increase... can equal many times that over your career."
+  },
+  {
+    "question": "What five questions form the basis of Marc Benioff's V2MOM tool?",
+    "expected_file": "Money - Master the game - 7 simple steps to financial freedom.pdf",
+    "expected_text_snippet": "1. What do I really want? (Vision.) 2. What is important about it? (Values.) 3. How will I get it? (Methods.) 4. What is preventing me from having it? (Obstacles.) 5. How will I know I am successful? (Measurements.)"
+  },
+  {
+    "question": "What is the difference between a 'broker' and a 'fiduciary' according to Robbins?",
+    "expected_file": "Money - Master the game - 7 simple steps to financial freedom.pdf",
+    "expected_text_snippet": "We learned the difference between a butcher and a dietitian—between a broker and a fiduciary. And now we know where to go to get transparent advice."
+  },
+  {
+    "question": "What is the 'All Seasons' strategy designed to provide?",
+    "expected_file": "Money - Master the game - 7 simple steps to financial freedom.pdf",
+    "expected_text_snippet": "Invincible, Unsinkable, Unconquerable: The All Seasons Strategy... Upside without the downside: Create a lifetime income plan."
+  }
+]
