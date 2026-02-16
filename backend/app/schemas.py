@@ -49,7 +49,21 @@ class VectorInsertRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = None  # may be empty
 
 class VectorQueryRequest(BaseModel):
-    embedding: List[float]
+    # embedding: List[float]
+    text: str
     k: int = 5
+    model_name: str = "bge-m3" # default model
+
+class QueryResultMatch(BaseModel):
+    text: str
+    score: float
+    metadata: Dict[str, Any]
+
 class VectorQueryResponse(BaseModel):
-    matches: List[Dict[str, Any]]
+    results: List[Dict[str, Any]]
+    
+class SystemCapabilities(BaseModel):
+    models: List[str]
+    strategies: List[str]
+    databases: List[str]
+    default_model: str

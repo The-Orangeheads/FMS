@@ -1,9 +1,3 @@
-export type ChunkingStrategy = "Recursive" | "Semantic" | "Character-based";
-export type EmbeddingModel =
-  | "Text-v2-Small"
-  | "Text-v3-Large"
-  | "Clip-v2 (Images)";
-export type VectorDB = "Pinecone" | "Milvus" | "Weaviate";
 
 export interface FileStatus {
   id: string;
@@ -17,4 +11,14 @@ export interface QueryResult {
   text: string;
   score: number; // Confidence level (0-1)
   sourceFile: string;
+}
+
+export type ChunkingStrategy = "fixed" | "recursive" | "semantic";
+export type EmbeddingModel = "bge-m3" | "arabic-sbert" | "siglip2" | "auto";
+export type VectorDB = "Chroma";
+
+export interface BackendModelConfig {
+  key: string;
+  capabilities: string[];
+  languages: string[];
 }

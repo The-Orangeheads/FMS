@@ -9,7 +9,7 @@ const NavItem = ({ icon, label, active = false, onClick }: NavItemProps) => {
           ${
             active
               ? "bg-blue-600/10 text-blue-500 border-l-4 border-blue-500 rounded-l-none"
-              : "hover:bg-slate-800 hover:text-white"
+              : "hover:bg-slate-800 hover:text-white hover:cursor-pointer"
           }`}
       >
         <span
