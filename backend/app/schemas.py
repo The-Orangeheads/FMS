@@ -42,3 +42,14 @@ class EmbeddingResponse(BaseModel):
     model_used: str
     results: List[EmbeddingOutput]
     processing_time_ms: float
+
+class VectorInsertRequest(BaseModel):
+    embedding: List[float]
+    file_path: str
+    metadata: Optional[Dict[str, Any]] = None  # may be empty
+
+class VectorQueryRequest(BaseModel):
+    embedding: List[float]
+    k: int = 5
+class VectorQueryResponse(BaseModel):
+    matches: List[Dict[str, Any]]
