@@ -37,22 +37,25 @@ const ContentBody: React.FC<Props> = ({ activeTab, isProcessing }) => {
     setLabConfig((prev) => ({ ...prev, [key]: value }));
   };
 
-  // ContentBody.tsx
   const onRunQuery = useCallback(
     (text: string) => {
-      runQuery(text, "documents", {
-        model_name: labConfig.model, // Ensure this is "auto", "bge-m3", etc.
-        k: labConfig.topK, // Ensure this is a number
+      // CHANGE "documents" TO "unified"
+      // This routes the request to: POST /api/v1/vectors/unified/query
+      runQuery(text, "unified", {
+        model_name: "auto", // The backend unified_query ignores this anyway and uses both
+        k: labConfig.topK,
       });
     },
-    [runQuery, labConfig.model, labConfig.topK],
+    [runQuery, labConfig.topK], // Removed labConfig.model dependency as it's auto now
   );
-
   const mappedResults = useMemo(() => {
     return (queryResults?.results ?? []).map((res: any) => ({
-      text: res.text ?? "No text content available",
+      text: res.metadata?.text ?? res.text ?? "Visual Match",
       score: res.score ?? 0,
       sourceFile: res.metadata?.filename ?? "Unknown Source",
+      // Flag whether this is an image or text for QuerySection to render correctly
+      type: res.metadata?.type === "image" ? "image" : "text",
+      imagePath: res.metadata?.filename,
     }));
   }, [queryResults]);
 

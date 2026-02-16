@@ -70,71 +70,29 @@ longer here.
 # --- RECIPE 2: SigLIP 2 (Multimodal: Text & Image) ---
 class SiglipModel(EmbeddingModelInterface):
     def __init__(self, model_id: str):
-        # 1. Detect Device (GPU vs CPU)
-        # This acts like a traffic cop: "If you have a GPU, use it. If not, use CPU.
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"SigLIP Model loading on: {self.device}")
-
-        # Note: Siglip2 usage depends on the specific HF implementation. 
-        # This is a generic recipe for SigLIP-style models in HF.
-        """
-        Here the processor is the one responsible for actually putting everything into the correct
-        format. If you give it text, it converts it into tokens.
-        If you give it an image it resizes it and normalizes it. (Any processing needed).
-
-        While the model is the actual weights for converting these tokens and images into actual vectors.
-        """
         self.processor = AutoProcessor.from_pretrained(model_id)
-        # We move the model to the GPU (if available) immediately after loading
-        self.model = AutoModel.from_pretrained(model_id).to(self.device)
+        from transformers import SiglipModel as TFSiglipModel
+        self.model = TFSiglipModel.from_pretrained(model_id).to(self.device)
 
-    # As we said above, there's an embed function that takes some chunks as input and returns a
-    # list of vectors.
     def embed(self, chunks: List[ChunkInput]) -> List[List[float]]:
-        inputs_list = [] # This is the input list that should contain everything processed before actually embedding
-        
-        for chunk in chunks:
-            if chunk.image_base64:
-                # Decode base64 to Image
-                """
-                We decode the Base64 string back into an image file. We use Base64 so the frontend 
-                team can send the image + metadata in a single JSON packet, rather than dealing with 
-                complex multipart file uploads.
-                """
-                image_data = base64.b64decode(chunk.image_base64)
-                image = Image.open(io.BytesIO(image_data)).convert("RGB")
-                inputs_list.append(self.processor(images=image, return_tensors="pt"))
-            elif chunk.text:
-                inputs_list.append(self.processor(text=[chunk.text], return_tensors="pt", padding="max_length"))
-        
         embeddings = []
-        with torch.no_grad(): # This no grad function makes the model not update its weights, much faster
-            for inputs in inputs_list:
-                # Move Inputs to Device (CRITICAL STEP)
-                # We must move the data to the same device (GPU/CPU) as the model before processing
-                inputs = {key: value.to(self.device) for key, value in inputs.items()}
-
-                # This logic depends on exact model output format (pooler_output vs last_hidden_state)
-                # Adjust based on specific SigLIP 2 documentation
-                output = self.model(**inputs)
-                
-                # Typically we take the pooled output or mean of last hidden state
-                """
-                The following piece of code is for the following reason:
-                Since some models might have slightly different implementations they output their vectors
-                in different formats. So the following code checks for both cases and returns the one it
-                finds, so it handles both cases so nothing to worry about.
-                """
-                if hasattr(output, 'pooler_output'):
-                    emb = output.pooler_output
-                else:
-                    emb = output.last_hidden_state.mean(dim=1)
-                
-                # Move result back to CPU list for JSON serialization
-                embeddings.append(emb[0].tolist())
-                
+        with torch.no_grad():
+            for chunk in chunks:
+                if chunk.image_base64:
+                    # During Ingestion: Use the Vision Tower
+                    image_data = base64.b64decode(chunk.image_base64)
+                    image = Image.open(io.BytesIO(image_data)).convert("RGB")
+                    inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+                    features = self.model.get_image_features(**inputs)
+                    embeddings.append(features[0].cpu().tolist())
+                elif chunk.text:
+                    # During Search: Use the Text Tower to find images
+                    inputs = self.processor(text=[chunk.text], return_tensors="pt", padding="max_length").to(self.device)
+                    features = self.model.get_text_features(**inputs)
+                    embeddings.append(features[0].cpu().tolist())
         return embeddings
-
+    
 # --- SERVICE CLASS ---
 
 class EmbeddingService:
