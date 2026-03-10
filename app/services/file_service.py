@@ -9,7 +9,7 @@ from app.services.chunker import ChunkingService
 
 class FileService:
     def __init__(self):
-        self.pdf_handler = PDFTextHandler(complexity_threshold=15)
+        self.pdf_handler = PDFTextHandler()
         self.chunker = ChunkingService()
         self.upload_dir = "temp_uploads"
         os.makedirs(self.upload_dir, exist_ok=True)
