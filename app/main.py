@@ -1,5 +1,10 @@
 from fastapi import FastAPI
+import uvicorn
+
 from app.core.config import settings
+from app.api.v1.vector_db_controller import router as vector_db_router
+from app.api.v1.embedding_controller import router as embedding_router
+from app.api.v1.file_processing_controller import router as file_processing_router 
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -7,6 +12,11 @@ app = FastAPI(
     description="AI-Powered File Management System"
 )
 
+app.include_router(vector_db_router)
+app.include_router(embedding_router)
+app.include_router(file_processing_router)
+
+# --- ENDPOINTS ---
 @app.get("/")
 async def root():
     return {
@@ -15,11 +25,5 @@ async def root():
         "version": settings.API_VERSION
     }
 
-# @app.get("/health")
-# async def health_check():
-#     """Health check endpoint."""
-#     return {"status": "healthy"}
-
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
