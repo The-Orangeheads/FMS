@@ -3,8 +3,8 @@ Vector Database Handler Module
 Handles Database modifications
 """
 
-
 import chromadb
+from chromadb.config import Settings as ChromaSettings
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
@@ -28,8 +28,11 @@ class VectorDatabase(ABC):
 # 2. ChromaDB Implementation
 class ChromaDBImpl(VectorDatabase):
     def __init__(self, data_path: str, collection_name: str = "my_collection"):
-        # Initialize the persistent client (saves to disk)
-        self.client = chromadb.PersistentClient(path=data_path)
+        # Initialize the persistent client (saves to disk). allow_reset=True for Clear DB.
+        self.client = chromadb.PersistentClient(
+            path=data_path,
+            settings=ChromaSettings(allow_reset=True)
+        )
         
         # Get or create a collection for the vectors
         # Using cosine similarity as it's standard for most embeddings
@@ -38,25 +41,30 @@ class ChromaDBImpl(VectorDatabase):
             metadata={"hnsw:space": "cosine"}
         )
 
-    def insert(self, embedding: List[float], file_path: str, metadata: Optional[Dict[str, Any]] = None):
+    def insert(self, embedding: List[float], file_path: str, metadata: Optional[Dict[str, Any]] = None, content: Optional[str] = None):
         if metadata is None:
             metadata = {}
-        # do not store file_path inside metadata; use it as the id
-        self.collection.add(embeddings=[embedding], metadatas=[metadata], ids=[file_path])
-
+        
+        self.collection.add(
+            embeddings=[embedding], 
+            metadatas=[metadata], 
+            ids=[file_path],
+            documents=[content] if content else None
+        )
 
     def query(self, embedding: List[float], k: int) -> List[Dict[str, Any]]:
         results = self.collection.query(
             query_embeddings=[embedding],
             n_results=k,
-            include=["metadatas", "distances"]
+            include=["metadatas", "distances", "documents"]
         )
         ids = results["ids"][0]            # list of ids (one per result)
         metas = results["metadatas"][0]    # list of metadata dicts (may be empty dicts)
         dists = results["distances"][0]    # list of distances (cosine distance if collection uses cosine)
-
+        docs = results["documents"][0]
+        
         hits = []
-        for _id, meta, dist in zip(ids, metas, dists):
+        for _id, meta, dist, doc in zip(ids, metas, dists, docs):
             # if metadata was empty, create an object and add file_path from the id
             meta_out = dict(meta or {})
             meta_out.setdefault("file_path", _id)  # attach file_path using the id
@@ -64,7 +72,7 @@ class ChromaDBImpl(VectorDatabase):
                 score = 1.0 - float(dist)  # convert cosine distance -> similarity
             except Exception:
                 score = None
-            hits.append({"score": score, "metadata": meta_out})
+            hits.append({"score": score, "metadata": meta_out, "document": doc})
 
         return hits
 

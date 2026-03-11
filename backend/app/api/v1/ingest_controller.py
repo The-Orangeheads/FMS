@@ -1,9 +1,12 @@
 import logging
 import os
 import base64
+import shutil
+import re
+from uuid import uuid4
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 
-# Ensure you import both DB services
+from app.core.config import settings
 from app.services.vector_db_service import documents_db_service, images_db_service
 from app.services.embedding import embedding_service
 from app.schemas import ChunkInput
@@ -32,7 +35,7 @@ async def ingest_file(
         # 1. Save the file temporarily
         file_path = await file_service.save_upload(file)
         
-        # --- BRANCH 1: IMAGE PROCESSING ---
+        # IMAGE PROCESSING
         if file.content_type.startswith("image/"):
             logger.info(f"Detected image upload: {file.filename}")
             
@@ -41,18 +44,23 @@ async def ingest_file(
                 image_bytes = f.read()
                 image_b64 = base64.b64encode(image_bytes).decode('utf-8')
             
-            # 2. Prepare Input for SigLIP (No chunking needed for single images)
+            # 2. Persist image for display (uploads/images/{uuid}_{safe_filename})
+            safe_name = re.sub(r'[^\w\-_.]', '_', file.filename)
+            storage_filename = f"{uuid4().hex}_{safe_name}"
+            storage_path = os.path.join(settings.UPLOADS_IMAGES_DIR, storage_filename)
+            shutil.copy2(file_path, storage_path)
+            
+            # 3. Prepare Input for SigLIP (No chunking needed for single images)
             inputs = [ChunkInput(
                 text=None,
                 image_base64=image_b64,
                 metadata={"filename": file.filename, "content_type": file.content_type}
             )]
             
-            # 3. Embed using SigLIP 2 explicitly
-            # We force 'siglip2' because 'bge-m3' cannot understand images
+            # 4. Embed using SigLIP 2 explicitly
             embedded_data = embedding_service.process_embeddings("siglip2", inputs)
             
-            # 4. Store in IMAGES Collection
+            # 5. Store in IMAGES Collection (storage_filename used for display endpoint)
             for idx, item in enumerate(embedded_data.results):
                 images_db_service.insert(
                     embedding=item.vector,
@@ -60,6 +68,7 @@ async def ingest_file(
                     metadata={
                         **(item.metadata or {}),
                         "filename": file.filename,
+                        "storage_path": storage_filename,
                         "type": "image"
                     }
                 )
@@ -71,10 +80,10 @@ async def ingest_file(
                 "message": "Image embedded and stored successfully."
             }
 
-        # --- BRANCH 2: TEXT/DOCUMENT PROCESSING (Existing Logic) ---
+        # TEXT/DOCUMENT PROCESSING
         else:
             logger.info(f"Detected text/document upload: {file.filename}")
-            
+            target_model = "bge-m3" if model_name == "auto" else model_name
             # 1. Process and Chunk Text
             result_chunks = file_service.process_and_chunk(
                 file_path=file_path,
@@ -86,19 +95,32 @@ async def ingest_file(
             )
 
             # 2. Prepare Input for Text Model
-            inputs = [ChunkInput(text=c['text'], metadata=c.get('metadata', {})) for c in result_chunks]
-            
-            # 3. Embed using Text Model (Defaulting to BGE-M3 as requested previously)
-            # You can switch this back to 'model_name' variable if you want dynamic routing again
-            target_model = "bge-m3" if model_name == "auto" else model_name
-            embedded_data = embedding_service.process_embeddings(target_model, inputs)
+            valid_inputs = []
+            valid_raw_chunks = []
 
-            # 4. Store in DOCUMENTS Collection
+            for chunk in result_chunks:
+                clean_text = " ".join(chunk['text'].split())
+                # Only keep chunks that have actual alphanumeric characters and are longer than 5 chars
+                if len(clean_text) > 5 and any(char.isalnum() for char in clean_text):
+                    chunk['text'] = clean_text # Update with the cleaned version
+                    valid_inputs.append(ChunkInput(text=clean_text, metadata=chunk.get('metadata', {})))
+                    valid_raw_chunks.append(chunk)
+
+            if not valid_inputs:
+                logger.warning(f"File {file.filename} resulted in 0 valid chunks after filtering.")
+                return {"status": "skipped", "message": "No meaningful text found in file."}
+
+            # 3. Embed using ONLY the valid data
+            embedded_data = embedding_service.process_embeddings(target_model, valid_inputs)
+
+            # 4. Store in DOCUMENTS
             for idx, item in enumerate(embedded_data.results):
-                text_content = getattr(item, 'text', result_chunks[idx]['text'])
+                # Use valid_raw_chunks instead of result_chunks to keep indices aligned
+                text_content = valid_raw_chunks[idx]['text']
                 documents_db_service.insert(
                     embedding=item.vector, 
                     file_path=f"{file.filename}_{idx}", 
+                    content=text_content,
                     metadata={
                         **(item.metadata or {}), 
                         "text": text_content,

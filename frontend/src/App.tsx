@@ -7,11 +7,12 @@ import { useIngest } from "./hooks/useIngest";
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState("Dashboard");
 
-  const { uploadFile, isUploading, uploadError, uploadResult } = useIngest();
-
+  const { uploadFiles, isUploading, uploadError, uploadResult } = useIngest();
   useEffect(() => {
     if (uploadResult) {
-      alert(`Success! Indexed ${uploadResult.total_chunks} chunks.`);
+      alert(
+        `Success! Ingestion complete. Indexed ${uploadResult.total_chunks} total chunks.`,
+      );
     }
   }, [uploadResult]);
 
@@ -21,16 +22,18 @@ const App: React.FC = () => {
     }
   }, [uploadError]);
 
-  const handleUpload = async (file: File) => {
-    await uploadFile(file, "recursive", 500, 50);
+  const handleUpload = async (files: File[]) => {
+    await uploadFiles(files, "recursive", 500, 50);
   };
 
   return (
     <div className="flex h-screen bg-[#0B141A] text-slate-300 font-sans overflow-hidden">
       <SideBar activeTab={activeTab} setActiveTab={setActiveTab} />
 
+      {/* Main Content Area */}
       <ContentBody activeTab={activeTab} isProcessing={isUploading} />
 
+      {/* Upload Sidebar */}
       <UploadCenter isProcessing={isUploading} onFileUpload={handleUpload} />
     </div>
   );

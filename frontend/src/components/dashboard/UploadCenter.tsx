@@ -1,9 +1,9 @@
 import React, { useRef } from "react";
-import { Cloud, Loader2, FileUp } from "lucide-react";
+import { Cloud, Loader2, FileUp, Files } from "lucide-react";
 
 interface Props {
   isProcessing: boolean;
-  onFileUpload: (file: File) => void;
+  onFileUpload: (files: File[]) => void;
 }
 
 const UploadCenter = ({ isProcessing, onFileUpload }: Props) => {
@@ -14,10 +14,9 @@ const UploadCenter = ({ isProcessing, onFileUpload }: Props) => {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onFileUpload(file);
-      // Reset input so the same file can be uploaded again if needed
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      onFileUpload(Array.from(files));
       e.target.value = "";
     }
   };
@@ -33,7 +32,6 @@ const UploadCenter = ({ isProcessing, onFileUpload }: Props) => {
         </p>
       </div>
 
-      {/* REQUIREMENT: Show active status if processing */}
       {isProcessing && (
         <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl animate-pulse">
           <div className="flex items-center gap-3 text-blue-400 mb-2">
@@ -49,27 +47,40 @@ const UploadCenter = ({ isProcessing, onFileUpload }: Props) => {
       <div className="mt-auto border-2 border-dashed border-slate-800 rounded-2xl p-6 text-center hover:border-slate-700 transition-colors">
         <div className="flex justify-center mb-4">
           <div className="p-3 bg-slate-800/50 rounded-full text-slate-500">
-            <FileUp size={24} />
+            <Files size={24} />
           </div>
         </div>
 
-        <p className="text-sm text-slate-400 mb-4">Max file size: 50MB</p>
+        <p className="text-sm text-slate-400 mb-2">Images & Docs supported</p>
+        <p className="text-[10px] text-slate-500 mb-4 font-mono">
+          Max: 50MB per file
+        </p>
 
-        {/* Hidden File Input */}
         <input
           type="file"
+          multiple
           ref={fileInputRef}
           onChange={handleFileChange}
           className="hidden"
-          accept=".pdf,.txt,.docx"
+          accept=".pdf,.txt,.docx,image/png,image/jpeg,image/webp"
         />
 
         <button
           onClick={handleButtonClick}
           disabled={isProcessing}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 py-2 rounded-lg text-white text-sm font-bold transition-all flex items-center justify-center gap-2"
+          className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 py-2.5 rounded-lg text-white text-sm font-bold transition-all flex items-center justify-center gap-2"
         >
-          {isProcessing ? "PROCESSING..." : "SELECT FILE"}
+          {isProcessing ? (
+            <>
+              <Loader2 className="animate-spin" size={14} />
+              PROCESSING...
+            </>
+          ) : (
+            <>
+              <FileUp size={14} />
+              SELECT FILES
+            </>
+          )}
         </button>
       </div>
     </aside>

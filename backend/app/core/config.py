@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # === FILE UPLOAD ===
     MAX_FILE_SIZE_MB: int = 50
     ALLOWED_EXTENSIONS: str = "pdf docx txt jpg jpeg png"
+    UPLOADS_IMAGES_DIR: str = os.path.join(os.getcwd(), "data", "uploads", "images")
     
     # === DUPLICATE DETECTION ===
     SIMILARITY_THRESHOLD: float = 0.95
@@ -50,6 +51,7 @@ settings = Settings()
 # create the required directories
 os.makedirs(settings.MODELS_DIR, exist_ok=True)
 os.makedirs(settings.DATA_DIR, exist_ok=True)
+os.makedirs(settings.UPLOADS_IMAGES_DIR, exist_ok=True)
 
 print(f"Configuration loaded: {settings.PROJECT_NAME}")
 print(f"Models directory: {settings.MODELS_DIR}")

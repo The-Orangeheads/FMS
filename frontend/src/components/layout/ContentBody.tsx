@@ -39,23 +39,20 @@ const ContentBody: React.FC<Props> = ({ activeTab, isProcessing }) => {
 
   const onRunQuery = useCallback(
     (text: string) => {
-      // CHANGE "documents" TO "unified"
-      // This routes the request to: POST /api/v1/vectors/unified/query
       runQuery(text, "unified", {
-        model_name: "auto", // The backend unified_query ignores this anyway and uses both
+        model_name: "auto",
         k: labConfig.topK,
       });
     },
-    [runQuery, labConfig.topK], // Removed labConfig.model dependency as it's auto now
+    [runQuery, labConfig.topK],
   );
   const mappedResults = useMemo(() => {
     return (queryResults?.results ?? []).map((res: any) => ({
       text: res.metadata?.text ?? res.text ?? "Visual Match",
       score: res.score ?? 0,
-      sourceFile: res.metadata?.filename ?? "Unknown Source",
-      // Flag whether this is an image or text for QuerySection to render correctly
-      type: res.metadata?.type === "image" ? "image" : "text",
-      imagePath: res.metadata?.filename,
+      sourceFile: res.sourceFile ?? res.metadata?.filename ?? "Unknown Source",
+      type: (res.type ?? res.metadata?.type) === "image" ? "image" : "text",
+      imagePath: res.imagePath ?? null, // null = legacy image, no persisted file
     }));
   }, [queryResults]);
 
@@ -82,17 +79,6 @@ const ContentBody: React.FC<Props> = ({ activeTab, isProcessing }) => {
               ? "Configure RAG parameters & test performance"
               : "Manage and query your library"}
           </p>
-        </div>
-        <div className="relative w-96">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-            size={16}
-          />
-          <input
-            type="text"
-            placeholder="Search documents..."
-            className="w-full bg-[#1C2732] border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-blue-500 text-slate-200"
-          />
         </div>
       </header>
 

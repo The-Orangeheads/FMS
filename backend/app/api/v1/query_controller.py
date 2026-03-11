@@ -19,11 +19,10 @@ async def query_collection(collection_name: str, request: VectorQueryRequest):
             model_name=request.model_name
         )
 
-        # 3. Perform the search
-        results = db_service.search(
-            collection_name=collection_name,
-            vector=query_vector,
-            limit=request.k
+        # 3. Perform the search (ChromaDBImpl has .query(embedding, k), not .search)
+        results = db_service.query(
+            embedding=query_vector,
+            k=request.k
         )
         
         return {"results": results}

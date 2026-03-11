@@ -7,7 +7,6 @@ export const useVectorDb = () => {
   const [clearError, setClearError] = useState<string | null>(null);
 
   const handleClear = async (dbType: string) => {
-    // Basic confirmation for safety
     if (
       !window.confirm(`Are you sure you want to clear the ${dbType} database?`)
     )
@@ -17,7 +16,6 @@ export const useVectorDb = () => {
     setClearError(null);
 
     try {
-      // Adjust this endpoint based on your actual FastAPI route
       await api.delete(`/api/v1/vector-db/${dbType.toLowerCase()}/clear`);
       alert(`${dbType} database cleared successfully.`);
     } catch (err: any) {

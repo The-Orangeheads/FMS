@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import api from "../api/api";
 
+const FALLBACK_CONFIG = {
+  models: [
+    { key: "bge-m3", capabilities: ["text"], languages: ["en", "multi"] },
+    { key: "siglip2", capabilities: ["text", "image"], languages: ["en"] },
+  ],
+  strategies: ["fixed", "recursive"],
+  databases: ["Chroma"],
+};
+
 export const useConfig = () => {
   const [config, setConfig] = useState<{
     models: any[];
@@ -9,7 +18,10 @@ export const useConfig = () => {
   } | null>(null);
 
   useEffect(() => {
-    api.get("/api/v1/config").then((res) => setConfig(res.data));
+    api
+      .get("/api/v1/config", { timeout: 8000 })
+      .then((res) => setConfig(res.data))
+      .catch(() => setConfig(FALLBACK_CONFIG));
   }, []);
 
   return config;

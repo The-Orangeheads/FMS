@@ -78,6 +78,17 @@ const ExperimentalPanel: React.FC<Props> = ({
           className="h-1.5 w-full bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 mt-2"
         />
       </div>
+
+      <div className="flex flex-col gap-2 justify-end">
+        <button
+          type="button"
+          onClick={onClearDb}
+          disabled={isClearing}
+          className="px-4 py-2.5 text-sm font-bold bg-red-900/50 hover:bg-red-800/60 border border-red-700/50 rounded-lg text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isClearing ? "Clearing..." : "Clear Database"}
+        </button>
+      </div>
     </div>
   );
 };
