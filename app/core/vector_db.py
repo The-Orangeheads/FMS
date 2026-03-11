@@ -39,8 +39,8 @@ class ChromaDBImpl(VectorDatabase):
         )
 
     def insert(self, embedding: List[float], file_path: str, metadata: Optional[Dict[str, Any]] = None):
-        if metadata is None:
-            metadata = {}
+        if metadata is not None and len(metadata) == 0:
+            metadata = None
         # do not store file_path inside metadata; use it as the id
         self.collection.add(embeddings=[embedding], metadatas=[metadata], ids=[file_path])
 

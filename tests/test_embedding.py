@@ -1,98 +1,194 @@
-import types
+# tests/test_embedding_service.py
 import pytest
-from app.services import embedding as embedding_module
-from app.schemas import ChunkInput
+from unittest.mock import MagicMock, patch
+
+from app.services.embedding import (
+    EmbeddingService,
+    SBERTModel,
+    SiglipModel,
+    EmbeddingModelInterface
+)
+from app.schemas import ChunkInput, EmbeddingOutput, EmbeddingResponse
 
 
-class DummyTensor:
-    def __init__(self, data):
-        self._data = data
+# -------------------------
+# Fixtures
+# -------------------------
 
-    def cpu(self):
-        return self
-
-    def to(self, device):
-        return self
-
-    def tolist(self):
-        return self._data
-
-
-class DummySBERT:
-    def __init__(self, model_name):
-        self.model_name = model_name
-
-    def encode(self, texts, convert_to_tensor=False):
-        # return a tensor-like object where cpu().tolist() works
-        # produce a vector per input
-        out = [[len(t) * 0.1, 0.5] for t in texts]
-        return DummyTensor(out)
+@pytest.fixture
+def fake_chunks():
+    """Return a list of fake ChunkInput objects."""
+    return [
+        ChunkInput(text="Hello world", metadata={"id": 1}),
+        ChunkInput(text="Another text", metadata={"id": 2}),
+        ChunkInput(text=None, metadata={"id": 3})  # empty text should be ignored
+    ]
 
 
-def test_sbert_embedding_monkeypatched(monkeypatch):
-    # Patch the SentenceTransformer to our dummy
-    monkeypatch.setattr(embedding_module, 'SentenceTransformer', DummySBERT)
-
-    service = embedding_module.EmbeddingService()
-
-    chunks = [ChunkInput(text="hello", metadata={"page": 1}), ChunkInput(text="world", metadata={"page": 2})]
-    resp = service.process_embeddings('paraphrase-multilingual', chunks)
-
-    assert resp.model_used == 'paraphrase-multilingual'
-    assert len(resp.results) == 2
-    assert resp.results[0].metadata == {'page': 1}
-    assert isinstance(resp.processing_time_ms, float)
+@pytest.fixture
+def fake_vectors():
+    """Return dummy vectors."""
+    return [
+        [0.1, 0.2, 0.3],
+        [0.4, 0.5, 0.6]
+    ]
 
 
-class DummyProcessor:
-    @staticmethod
-    def from_pretrained(_):
-        return DummyProcessor()
+@pytest.fixture
+def service():
+    """Return an EmbeddingService with models mocked."""
+    svc = EmbeddingService()
+    
+    # Create fake SBERTModel mock
+    sbert_mock = MagicMock()
+    sbert_mock.embed.return_value = [[0.1,0.2,0.3], [0.4,0.5,0.6]]
+    
+    # Create fake SiglipModel mock
+    siglip_mock = MagicMock()
+    siglip_mock.embed.return_value = [[0.7,0.8,0.9]]
 
-    def __call__(self, *args, **kwargs):
-        # Return a dict of tensors (keys arbitrary)
-        return {"input_ids": DummyTensor([[1, 2, 3]])}
+    # Map exact registry keys to mocks
+    def get_model_side_effect(key):
+        if key in ["bge-m3", "paraphrase-multilingual", "distiluse-multilingual", "arabic-sbert", "arabic-minilm"]:
+            return sbert_mock
+        elif key == "siglip2":
+            return siglip_mock
+        else:
+            raise ValueError(f"Unknown model {key}")
+    
+    svc._get_model = MagicMock(side_effect=get_model_side_effect)
+    
+    return svc
+
+# -------------------------
+# Interface Tests
+# -------------------------
+
+def test_embedding_interface_not_implemented():
+    """Check that calling embed on interface raises NotImplementedError."""
+    model = EmbeddingModelInterface()
+    with pytest.raises(NotImplementedError):
+        model.embed([])
 
 
-class DummyBatchTensor(DummyTensor):
-    def __getitem__(self, idx):
-        # return vector-like with tolist
-        return DummyTensor(self._data[0])
+# -------------------------
+# SBERT/Siglip mocked embedding tests
+# -------------------------
+
+@pytest.mark.parametrize(
+    "model_key,expected_vectors_len",
+    [
+        ("bge-m3", 2),
+        ("paraphrase-multilingual", 2),
+        ("siglip2", 1)
+    ]
+)
+def test_process_embeddings_returns_vectors(service, fake_chunks, model_key, expected_vectors_len):
+    """Test that process_embeddings returns correct vectors and metadata."""
+    response: EmbeddingResponse = service.process_embeddings(model_key, fake_chunks)
+    
+    # Check type
+    assert isinstance(response, EmbeddingResponse)
+    assert response.model_used == model_key
+    assert isinstance(response.results, list)
+    
+    # Check results
+    assert len(response.results) == expected_vectors_len
+    for out in response.results:
+        assert isinstance(out, EmbeddingOutput)
+        assert isinstance(out.vector, list)
+        assert "id" in out.metadata
 
 
-class DummyModel:
-    @staticmethod
-    def from_pretrained(_):
-        return DummyModel()
-
-    def to(self, device):
-        return self
-
-    def __call__(self, **kwargs):
-        class Out:
-            pooler_output = DummyBatchTensor([[0.1, 0.2]])
-
-        return Out()
+def test_process_embeddings_invalid_model(service, fake_chunks):
+    """Test that invalid model key raises ValueError."""
+    service._get_model = MagicMock(side_effect=ValueError("Model not found"))
+    
+    with pytest.raises(ValueError, match="Model not found"):
+        service.process_embeddings("invalid-model", fake_chunks)
 
 
-def test_siglip_embedding_monkeypatched(monkeypatch):
-    # Patch AutoProcessor and AutoModel used by SiglipModel
-    monkeypatch.setattr(embedding_module, 'AutoProcessor', DummyProcessor)
-    monkeypatch.setattr(embedding_module, 'AutoModel', DummyModel)
-    # Also force torch.cuda.is_available to False to avoid device differences
-    import types, contextlib
-    DummyTorch = types.SimpleNamespace(
-        cuda=types.SimpleNamespace(is_available=lambda: False),
-        no_grad=contextlib.nullcontext
-    )
-    monkeypatch.setattr(embedding_module, 'torch', DummyTorch)
+# -------------------------
+# SBERTModel.embed mocked
+# -------------------------
 
-    service = embedding_module.EmbeddingService()
+@patch("app.services.embedding.SentenceTransformer")
+def test_sbert_model_embed(mock_transformer, fake_chunks):
+    """Test SBERTModel.embed logic without downloading model."""
+    fake_model = MagicMock()
+    fake_model.encode.return_value.cpu.return_value.tolist.return_value = [[0.1,0.2],[0.3,0.4]]
+    mock_transformer.return_value = fake_model
+    
+    model = SBERTModel("dummy-model")
+    vectors = model.embed(fake_chunks)
+    
+    # Only non-empty text should be embedded
+    assert vectors == [[0.1,0.2],[0.3,0.4]]
+    fake_model.encode.assert_called_once()
 
-    chunks = [ChunkInput(text="a text chunk", metadata={"m": 1}), ChunkInput(image_base64=None, metadata={})]
-    # Use siglip2 model key registered in the service
-    resp = service.process_embeddings('siglip2', [ChunkInput(text="img test", metadata={"p":1})])
 
-    assert resp.model_used == 'siglip2'
-    assert len(resp.results) == 1
-    assert 'p' in resp.results[0].metadata
+# -------------------------
+# SiglipModel.embed mocked
+# -------------------------
+from unittest.mock import patch, MagicMock
+import pytest
+from app.services.embedding import SiglipModel, ChunkInput
+
+@patch("app.services.embedding.AutoModel")
+@patch("app.services.embedding.AutoProcessor")
+@patch("app.services.embedding.Image")
+@patch("app.services.embedding.io.BytesIO")
+@patch("app.services.embedding.base64.b64decode")
+@patch("app.services.embedding.torch")
+def test_siglip_model_embed(mock_torch, mock_b64, mock_bytesio, mock_image, mock_processor, mock_model):
+    """Test SiglipModel.embed without real images or HF models."""
+
+    # --------------------
+    # Mock torch and device
+    # --------------------
+    mock_torch.cuda.is_available.return_value = False
+
+    # Properly mock no_grad as a context manager
+    mock_no_grad_cm = MagicMock()
+    mock_no_grad_cm.__enter__.return_value = None
+    mock_no_grad_cm.__exit__.return_value = None
+    mock_torch.no_grad.return_value = mock_no_grad_cm
+
+    # --------------------
+    # Mock processor
+    # --------------------
+    fake_processor = MagicMock()
+    fake_processor.return_value = {"input_ids": MagicMock(), "attention_mask": MagicMock()}
+    mock_processor.from_pretrained.return_value = fake_processor
+
+    # --------------------
+    # Mock model
+    # --------------------
+    fake_model = MagicMock()
+    # Simulate output with pooler_output attribute
+    fake_output = MagicMock()
+    fake_output.pooler_output = MagicMock()
+    fake_output.pooler_output[0].tolist.return_value = [0.5, 0.6]
+    fake_model.return_value = fake_output
+    mock_model.from_pretrained.return_value.to.return_value = fake_model
+
+    # --------------------
+    # Create model instance
+    # --------------------
+    model = SiglipModel("dummy-siglip")
+
+    # --------------------
+    # Create a fake chunk with base64 image
+    # --------------------
+    chunk = ChunkInput(text=None, image_base64="ZmFrZV9pbWFnZQ==", metadata={})
+
+    # Ensure model.device is 'cpu'
+    with patch.object(model, "device", "cpu"):
+        vectors = model.embed([chunk])
+
+    # --------------------
+    # Assertions
+    # --------------------
+    assert isinstance(vectors, list)
+    assert len(vectors) == 1
+    assert isinstance(vectors[0], list)

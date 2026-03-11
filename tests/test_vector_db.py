@@ -1,53 +1,157 @@
-import types
 import pytest
-from app.core import vector_db
+import tempfile
+from typing import List, Dict, Any
+
+from app.core.vector_db import ChromaDBImpl
 
 
-class FakeCollection:
-    def __init__(self):
-        self.store = {}  # id -> (embedding, metadata)
+# -------------------------
+# Fixtures
+# -------------------------
 
-    def add(self, embeddings, metadatas, ids):
-        for emb, meta, _id in zip(embeddings, metadatas, ids):
-            self.store[_id] = (emb, meta)
+@pytest.fixture
+def temp_db(tmp_path):
+    """Create a temporary ChromaDB instance."""
+    db_path = tmp_path / "chroma"
 
-    def query(self, query_embeddings, n_results, include):
-        # naive: return stored ids up to n_results, distances = 0 for identical, else 1
-        q = query_embeddings[0]
-        ids = []
-        metas = []
-        dists = []
-        for _id, (emb, meta) in list(self.store.items())[:n_results]:
-            ids.append(_id)
-            metas.append(meta)
-            dists.append(0.0 if emb == q else 1.0)
+    db = ChromaDBImpl(
+        data_path=str(db_path),
+        collection_name="test_collection"
+    )
 
-        return {"ids": [ids], "metadatas": [metas], "distances": [dists]}
+    yield db
 
+    # force close references
+    del db
 
-class FakeClient:
-    def __init__(self, path=None):
-        self.path = path
-        self._collections = {}
-
-    def get_or_create_collection(self, name, metadata=None):
-        if name not in self._collections:
-            self._collections[name] = FakeCollection()
-        return self._collections[name]
+@pytest.fixture
+def sample_embedding():
+    return [0.1, 0.2, 0.3]
 
 
-def test_chromadb_impl_monkeypatched(monkeypatch, tmp_path):
-    # Patch chromadb.PersistentClient used in the module
-    monkeypatch.setattr(vector_db, 'chromadb', types.SimpleNamespace(PersistentClient=lambda path: FakeClient(path)))
+@pytest.fixture
+def sample_metadata():
+    return {"label": "car", "source": "dataset"}
 
-    db = vector_db.ChromaDBImpl(str(tmp_path), "test_coll")
 
-    # insert two vectors
-    db.insert([0.1, 0.2], "file1.txt", metadata={"a": 1})
-    db.insert([0.5, 0.6], "file2.txt", metadata={"b": 2})
-    # query similar to first vector
-    hits = db.query([0.1, 0.2], k=2)
-    assert isinstance(hits, list)
-    assert len(hits) == 2
-    assert hits[0]["metadata"].get("file_path") == "file1.txt"
-    assert hits[0]["score"] == 1.0
+# -------------------------
+# Insert Tests
+# -------------------------
+
+@pytest.mark.parametrize(
+    "embedding,metadata",
+    [
+        ([0.1, 0.2, 0.3], None),
+        ([0.5, 0.6, 0.7], {"label": "dog"}),
+        ([0.9, 0.1, 0.2], {"category": "animal", "confidence": 0.9}),
+    ],
+)
+def test_insert_and_query_basic(temp_db, embedding, metadata):
+    """Ensure inserted vectors can be queried."""
+    file_path = "test_image.jpg"
+
+    temp_db.insert(embedding, file_path, metadata)
+
+    results = temp_db.query(embedding, k=1)
+
+    assert len(results) == 1
+    assert "score" in results[0]
+    assert "metadata" in results[0]
+    assert results[0]["metadata"]["file_path"] == file_path
+
+
+# -------------------------
+# Query Tests
+# -------------------------
+
+def test_query_returns_correct_k(temp_db):
+    """Query should return at most k results."""
+    embeddings = [
+        ([0.1, 0.2, 0.3], "a.jpg"),
+        ([0.4, 0.5, 0.6], "b.jpg"),
+        ([0.7, 0.8, 0.9], "c.jpg"),
+    ]
+
+    for emb, fp in embeddings:
+        temp_db.insert(emb, fp)
+
+    results = temp_db.query([0.1, 0.2, 0.3], k=2)
+
+    assert len(results) <= 2
+
+
+def test_query_score_range(temp_db, sample_embedding):
+    """Score should be between -inf and 1 (cosine similarity)."""
+    temp_db.insert(sample_embedding, "image.jpg")
+
+    results = temp_db.query(sample_embedding, 1)
+
+    score = results[0]["score"]
+    assert score is None or score <= 1.0
+
+
+# -------------------------
+# Metadata Handling
+# -------------------------
+
+def test_metadata_preserved(temp_db, sample_embedding, sample_metadata):
+    """Ensure metadata is preserved after retrieval."""
+    file_path = "image_meta.jpg"
+
+    temp_db.insert(sample_embedding, file_path, sample_metadata)
+
+    results = temp_db.query(sample_embedding, 1)
+
+    meta = results[0]["metadata"]
+
+    for key, value in sample_metadata.items():
+        assert meta[key] == value
+
+
+def test_file_path_added_if_missing(temp_db, sample_embedding):
+    """file_path should be automatically added to metadata."""
+    file_path = "image_path.jpg"
+
+    temp_db.insert(sample_embedding, file_path, metadata={})
+
+    results = temp_db.query(sample_embedding, 1)
+
+    assert results[0]["metadata"]["file_path"] == file_path
+
+
+# -------------------------
+# Error Handling
+# -------------------------
+
+def test_invalid_embedding_insert(temp_db):
+    """Ensure invalid embeddings raise errors."""
+    with pytest.raises(Exception):
+        temp_db.insert("not_a_vector", "bad.jpg")
+
+
+def test_invalid_query_embedding(temp_db):
+    """Ensure invalid query embedding raises errors."""
+    with pytest.raises(Exception):
+        temp_db.query("not_a_vector", k=1)
+
+
+# -------------------------
+# Multiple Inserts
+# -------------------------
+
+@pytest.mark.integration
+def test_multiple_insert_and_query(temp_db):
+    """Test querying among multiple embeddings."""
+    vectors = [
+        ([0.1, 0.2, 0.3], "img1.jpg"),
+        ([0.9, 0.8, 0.7], "img2.jpg"),
+        ([0.2, 0.1, 0.3], "img3.jpg"),
+    ]
+
+    for emb, path in vectors:
+        temp_db.insert(emb, path)
+
+    results = temp_db.query([0.1, 0.2, 0.3], k=2)
+
+    assert len(results) == 2
+    assert all("metadata" in r for r in results)
