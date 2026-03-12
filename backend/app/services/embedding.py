@@ -80,17 +80,29 @@ class SiglipModel(EmbeddingModelInterface):
         with torch.no_grad():
             for chunk in chunks:
                 if chunk.image_base64:
-                    # During Ingestion: Use the Vision Tower
                     image_data = base64.b64decode(chunk.image_base64)
                     image = Image.open(io.BytesIO(image_data)).convert("RGB")
                     inputs = self.processor(images=image, return_tensors="pt").to(self.device)
-                    features = self.model.get_image_features(**inputs)
-                    embeddings.append(features[0].cpu().tolist())
+                    output = self.model.get_image_features(**inputs)
                 elif chunk.text:
-                    # During Search: Use the Text Tower to find images
                     inputs = self.processor(text=[chunk.text], return_tensors="pt", padding="max_length").to(self.device)
-                    features = self.model.get_text_features(**inputs)
-                    embeddings.append(features[0].cpu().tolist())
+                    output = self.model.get_text_features(**inputs)
+                else:
+                    continue
+
+                # 1. Handle Wrapper: Get the raw tensor from BaseModelOutputWithPooling
+                # If 'output' isn't a tensor, it's the wrapper; grab the first element
+                features = output if torch.is_tensor(output) else output[0]
+
+                # 2. Handle SigLIP 2 MAP: (Batch, 64, 768) -> (Batch, 768)
+                # We average the 64 tokens to get a single global embedding
+                if len(features.shape) == 3:
+                    features = features.mean(dim=1)
+
+                # 3. Flatten & Convert: (1, 768) -> (768,) -> Python List
+                vector = features.squeeze().cpu().detach().tolist()
+                embeddings.append(vector)
+                
         return embeddings
     
 # --- SERVICE CLASS ---
@@ -237,6 +249,7 @@ class EmbeddingService:
             print(f"DEBUG: Ingestion Auto-routing to Multilingual: {effective_model_key}")
         
         model = self._get_model(effective_model_key)
+        # Inside process_embeddings...
         vectors = model.embed(chunks)
         
         results = []
