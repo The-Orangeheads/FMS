@@ -54,6 +54,13 @@ class VectorQueryRequest(BaseModel):
     k: int = 5
     model_name: str = "bge-m3" # default model
 
+#! FOR TESTING PURPOSES
+class VectorQueryTest(BaseModel):
+    embedding: List[float]
+    min_similarity: float = 0.75
+    min_k: int = 16
+    max_k: int = 1048576
+
 class QueryResultMatch(BaseModel):
     text: str
     score: float

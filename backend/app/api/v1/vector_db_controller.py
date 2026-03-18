@@ -12,6 +12,8 @@ from app.core.vector_db import ChromaDBImpl
 from app.schemas import VectorInsertRequest, VectorQueryRequest, VectorQueryResponse, ChunkInput
 from app.services.embedding import embedding_service
 
+from app.schemas import VectorQueryTest #! FOR TESTING PURPOSES 
+
 # initialize logging
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/vectors", tags=["vectors"])
@@ -170,6 +172,27 @@ def query_vectors(collection: str, req: VectorQueryRequest):
             
         query_vector = embedding_res.results[0].vector
         raw_hits = svc.query(query_vector, req.k)
+        
+        formatted_results = []
+        for hit in (raw_hits or []):
+            formatted_results.append({
+                "score": hit.get("score", 0.0),
+                "text": hit.get("document") or hit.get("metadata", {}).get("text") or "No text content",
+                "metadata": hit.get("metadata", {}) 
+            })
+
+        return VectorQueryResponse(results=formatted_results)
+
+    except Exception as e:
+        logger.exception(f"Query Error for {collection}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{collection}/query_similarity", response_model=VectorQueryResponse)
+def query_vectors(collection: str, req: VectorQueryTest):
+    svc = _get_service_for_collection(collection)
+    try:
+        raw_hits = svc.query_similarity(req.embedding, req.min_similarity, req.min_k, req.max_k)
         
         formatted_results = []
         for hit in (raw_hits or []):

@@ -41,6 +41,7 @@ class ChromaDBImpl(VectorDatabase):
             metadata={"hnsw:space": "cosine"}
         )
 
+                                                                                                        # TODO: GET RID OF "CONTENT"
     def insert(self, embedding: List[float], file_path: str, metadata: Optional[Dict[str, Any]] = None, content: Optional[str] = None):
         if metadata is None:
             metadata = {}
@@ -61,7 +62,7 @@ class ChromaDBImpl(VectorDatabase):
         ids = results["ids"][0]            # list of ids (one per result)
         metas = results["metadatas"][0]    # list of metadata dicts (may be empty dicts)
         dists = results["distances"][0]    # list of distances (cosine distance if collection uses cosine)
-        docs = results["documents"][0]
+        docs = results["documents"][0]     # TODO: GET RID OF "documents/content"
         
         hits = []
         for _id, meta, dist, doc in zip(ids, metas, dists, docs):
@@ -76,6 +77,37 @@ class ChromaDBImpl(VectorDatabase):
 
         return hits
 
+    # min_similarity is cos similarity
+    #TODO: remove "documents"
+    def query_similarity(self, embedding: List[float], min_similarity: float, min_k: int = 16, max_k: int = 1048576) -> List[Dict[str, Any]]:
+        k = min(min_k, max_k)
+        max_dist = 1.0 - min_similarity
+        while(k <= max_k):
+            results = self.collection.query(
+                query_embeddings=[embedding],
+                n_results=k,
+                include=["metadatas", "distances", "documents"]
+            )
+            if(float(results['distances'][0][-1]) > max_dist):
+                break
+            k *= 2
+        
+        ids = results["ids"][0]            # list of ids (one per result)
+        metas = results["metadatas"][0]    # list of metadata dicts (may be empty dicts)
+        dists = results["distances"][0]    # list of distances (cosine distance if collection uses cosine)
+        docs = results["documents"][0]     # TODO: GET RID OF "documents/content"
+        hits = []
+        for _id, meta, dist, doc in zip(ids, metas, dists, docs):
+            # if metadata was empty, create an object and add file_path from the id
+            meta_out = dict(meta or {})
+            meta_out.setdefault("file_path", _id)  # attach file_path using the id
+            try:
+                score = 1.0 - float(dist)  # convert cosine distance -> similarity
+            except Exception:
+                score = None
+            hits.append({"score": score, "metadata": meta_out, "document": doc})
+
+        return hits
 
 # -- Example Usage 
 # db = ChromaDBImpl(data_path="./chroma_storage")
