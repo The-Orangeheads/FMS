@@ -38,7 +38,9 @@ class SBERTModel(EmbeddingModelInterface):
     time you use the model.
     """
     def __init__(self, model_name: str):
-        self.model = SentenceTransformer(model_name)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = SentenceTransformer(model_name, device=self.device)
+        print(f"SBERT Model loaded on device: {self.device}")
 
     """
     This is the function from the interface above, we override it here. It takes a list of chunks
@@ -58,7 +60,18 @@ class SBERTModel(EmbeddingModelInterface):
         The cpu().tolist() function is responsible for converting the resulting vectors into a python
         list so that it's possible to save as JSON and sent over the API.
         """
-        embeddings = self.model.encode(texts, convert_to_tensor=True)
+
+        # Log token counts to see variance
+        token_counts = [len(self.model.tokenizer.encode(text)) for text in texts]
+        print(f"Token counts: min={min(token_counts)}, max={max(token_counts)}, avg={sum(token_counts)/len(token_counts):.1f}")
+
+        embeddings = self.model.encode(
+            texts, 
+            convert_to_tensor=True,
+            show_progress_bar=True,  # To show progress in console
+            batch_size=32  # Larger batch is faster on GPU
+        )
+        
         return embeddings.cpu().tolist()
 
 """
@@ -72,39 +85,71 @@ class SiglipModel(EmbeddingModelInterface):
     def __init__(self, model_id: str):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.processor = AutoProcessor.from_pretrained(model_id)
-        from transformers import SiglipModel as TFSiglipModel
-        self.model = TFSiglipModel.from_pretrained(model_id).to(self.device)
+        self.model = AutoModel.from_pretrained(model_id).to(self.device).eval()
 
-    def embed(self, chunks: List[ChunkInput]) -> List[List[float]]:
-        embeddings = []
-        with torch.no_grad():
-            for chunk in chunks:
-                if chunk.image_base64:
-                    image_data = base64.b64decode(chunk.image_base64)
-                    image = Image.open(io.BytesIO(image_data)).convert("RGB")
-                    inputs = self.processor(images=image, return_tensors="pt").to(self.device)
-                    output = self.model.get_image_features(**inputs)
-                elif chunk.text:
-                    inputs = self.processor(text=[chunk.text], return_tensors="pt", padding="max_length").to(self.device)
-                    output = self.model.get_text_features(**inputs)
-                else:
-                    continue
-
-                # 1. Handle Wrapper: Get the raw tensor from BaseModelOutputWithPooling
-                # If 'output' isn't a tensor, it's the wrapper; grab the first element
-                features = output if torch.is_tensor(output) else output[0]
-
-                # 2. Handle SigLIP 2 MAP: (Batch, 64, 768) -> (Batch, 768)
-                # We average the 64 tokens to get a single global embedding
-                if len(features.shape) == 3:
-                    features = features.mean(dim=1)
-
-                # 3. Flatten & Convert: (1, 768) -> (768,) -> Python List
-                vector = features.squeeze().cpu().detach().tolist()
-                embeddings.append(vector)
-                
-        return embeddings
+        self.logit_scale = self.model.logit_scale.exp().item()
+        self.logit_bias = self.model.logit_bias.item()
     
+    def _to_embedding_tensor(self, outputs):
+        """
+        Normalize the many possible output shapes/types into a 2D tensor:
+        (batch_size, hidden_dim)
+        """
+        if torch.is_tensor(outputs):
+            return outputs
+
+        # Most robust for HF ModelOutput objects
+        if hasattr(outputs, "text_embeds") and outputs.text_embeds is not None:
+            return outputs.text_embeds
+        if hasattr(outputs, "image_embeds") and outputs.image_embeds is not None:
+            return outputs.image_embeds
+        if hasattr(outputs, "pooler_output") and outputs.pooler_output is not None:
+            return outputs.pooler_output
+
+        # Fallback for tuple-like outputs
+        if isinstance(outputs, (tuple, list)) and len(outputs) > 0:
+            first = outputs[0]
+            if torch.is_tensor(first):
+                return first
+            if hasattr(first, "pooler_output") and first.pooler_output is not None:
+                return first.pooler_output
+
+        raise TypeError(f"Unsupported SigLIP2 output type: {type(outputs)!r}")
+
+    @torch.no_grad()
+    def embed(self, chunks: List[ChunkInput]) -> List[List[float]]:
+        embeddings: List[List[float]] = []
+
+        for chunk in chunks:
+            if chunk.image_base64:
+                image_data = base64.b64decode(chunk.image_base64)
+                image = Image.open(io.BytesIO(image_data)).convert("RGB")
+
+                inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+                outputs = self.model.get_image_features(**inputs)
+
+            elif chunk.text:
+                inputs = self.processor(
+                    text=[chunk.text],
+                    return_tensors="pt",
+                    padding="max_length",
+                    max_length=64,
+                    truncation=True,
+                ).to(self.device)
+                outputs = self.model.get_text_features(**inputs)
+
+            else:
+                continue
+
+            vec = self._to_embedding_tensor(outputs)
+
+            # L2-normalize for retrieval / cosine similarity
+            vec = vec / vec.norm(p=2, dim=-1, keepdim=True)
+
+            embeddings.append(vec.squeeze(0).cpu().tolist())
+
+        return embeddings
+
 # --- SERVICE CLASS ---
 
 class EmbeddingService:

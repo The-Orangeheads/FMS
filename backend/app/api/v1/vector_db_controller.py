@@ -3,8 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 import traceback
 from uuid import uuid4
-
-import chromadb.errors
+import torch
 from app.core.config import settings
 from app.services import vector_db_service
 from app.services.vector_db_service import images_db_service, documents_db_service
@@ -64,9 +63,13 @@ async def unified_query(request: VectorQueryRequest):
         img_emb_res = embedding_service.process_embeddings("siglip2", [chunk_input])
         raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=fetch_k)
         
+        model = embedding_service._get_model("siglip2")
+
         img_results = []
         for hit in (raw_img_hits or []):
             score = hit.get("score", 0.0)
+            score = score * 100 - 10        # optimize the scale and bias
+            score = torch.sigmoid(torch.tensor(score)).item()
             meta = hit.get("metadata", {})
 
             # Skip if less than 10% match
