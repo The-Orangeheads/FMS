@@ -7,6 +7,7 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
+import bisect
 
 # 1. Abstract Base Class
 class VectorDatabase(ABC):
@@ -92,10 +93,13 @@ class ChromaDBImpl(VectorDatabase):
                 break
             k *= 2
         
-        ids = results["ids"][0]            # list of ids (one per result)
-        metas = results["metadatas"][0]    # list of metadata dicts (may be empty dicts)
         dists = results["distances"][0]    # list of distances (cosine distance if collection uses cosine)
-        docs = results["documents"][0]     # TODO: GET RID OF "documents/content"
+        idx = bisect.bisect_right(dists, max_dist);
+        del dists[idx:]
+        
+        ids = results["ids"][0][:idx]            # list of ids (one per result)
+        metas = results["metadatas"][0][:idx]    # list of metadata dicts (may be empty dicts)
+        docs = results["documents"][0][:idx]     # TODO: GET RID OF "documents/content"
         hits = []
         for _id, meta, dist, doc in zip(ids, metas, dists, docs):
             # if metadata was empty, create an object and add file_path from the id
