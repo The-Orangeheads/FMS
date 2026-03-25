@@ -65,13 +65,16 @@ class SBERTModel(EmbeddingModelInterface):
         token_counts = [len(self.model.tokenizer.encode(text)) for text in texts]
         print(f"Token counts: min={min(token_counts)}, max={max(token_counts)}, avg={sum(token_counts)/len(token_counts):.1f}")
 
+        # for batching, similar chunk sizes are recommended per batch (sorting may help if not equal sizes)
+
         embeddings = self.model.encode(
             texts, 
             convert_to_tensor=True,
             show_progress_bar=True,  # To show progress in console
-            batch_size=32  # Larger batch is faster on GPU
+            batch_size=1,
+            normalize_embeddings=True  # normalize for cosine similarity
         )
-        
+
         return embeddings.cpu().tolist()
 
 """
