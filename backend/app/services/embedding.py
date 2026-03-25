@@ -86,6 +86,7 @@ class SiglipModel(EmbeddingModelInterface):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.processor = AutoProcessor.from_pretrained(model_id)
         self.model = AutoModel.from_pretrained(model_id).to(self.device).eval()
+        print(f"Siglip Model loaded on device: {self.device}")
 
         self.logit_scale = self.model.logit_scale.exp().item()
         self.logit_bias = self.model.logit_bias.item()
