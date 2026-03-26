@@ -117,7 +117,7 @@ async def ingest_file(
             for idx, item in enumerate(embedded_data.results):
                 # Use valid_raw_chunks instead of result_chunks to keep indices aligned
                 text_content = valid_raw_chunks[idx]['text']
-                documents_db_service.insert(
+                vector_db_service.documents_db_service.insert(
                     embedding=item.vector, 
                     file_path=f"{file.filename}_{idx}", 
                     content=text_content,
