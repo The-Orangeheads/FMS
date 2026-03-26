@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 
 from app.core.config import settings
-from app.services.vector_db_service import documents_db_service, images_db_service
+from app.services import vector_db_service
 from app.services.embedding import embedding_service
 from app.schemas import ChunkInput
 from app.services.file_service import FileService
@@ -62,7 +62,7 @@ async def ingest_file(
             
             # 5. Store in IMAGES Collection (storage_filename used for display endpoint)
             for idx, item in enumerate(embedded_data.results):
-                images_db_service.insert(
+                vector_db_service.images_db_service.insert(
                     embedding=item.vector,
                     file_path=file.filename,
                     metadata={
