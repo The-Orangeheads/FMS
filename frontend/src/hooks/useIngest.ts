@@ -28,7 +28,7 @@ export const useIngest = () => {
 
       try {
         // Pass an empty headers object or ensure config doesn't force JSON
-        await trigger("/api/v1/ingest", "post", formData, {
+        await trigger("/api/ingest", "post", formData, {
         });
       } catch (err) {
         console.error(`Failed to upload ${file.name}:`, err);

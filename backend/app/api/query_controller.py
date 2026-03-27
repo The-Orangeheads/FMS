@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.schemas import VectorQueryRequest 
-from app.services.embedding import embedding_service
+from app.services.embedding_service import embedding_service
 from app.services.vector_db_service import images_db_service, documents_db_service
 import traceback
 

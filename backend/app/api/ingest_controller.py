@@ -8,12 +8,12 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 
 from app.core.config import settings
 from app.services import vector_db_service
-from app.services.embedding import embedding_service
+from app.services.embedding_service import embedding_service
 from app.schemas import ChunkInput
 from app.services.file_service import FileService
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/ingest", tags=["ingestion"])
+router = APIRouter(prefix="/api/ingest", tags=["ingestion"])
 file_service = FileService()
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -117,7 +117,7 @@ async def ingest_file(
             for idx, item in enumerate(embedded_data.results):
                 # Use valid_raw_chunks instead of result_chunks to keep indices aligned
                 text_content = valid_raw_chunks[idx]['text']
-                documents_db_service.insert(
+                vector_db_service.documents_db_service.insert(
                     embedding=item.vector, 
                     file_path=f"{file.filename}_{idx}", 
                     content=text_content,

@@ -4,8 +4,8 @@ from typing import List, Dict
 from fastapi import UploadFile
 from pathlib import Path
 
-from app.services.text_handler import PDFTextHandler
-from app.services.chunker import ChunkingService
+from app.core.text_handler import PDFTextHandler
+from app.core.chunker import ChunkingService
 
 class FileService:
     def __init__(self):

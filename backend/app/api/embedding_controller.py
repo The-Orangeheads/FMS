@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.schemas import EmbeddingRequest, EmbeddingResponse
-from app.services.embedding import embedding_service
+from app.services.embedding_service import embedding_service
 
 router = APIRouter(prefix="/embedding", tags=["Embedding"])
 

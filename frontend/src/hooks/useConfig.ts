@@ -19,7 +19,7 @@ export const useConfig = () => {
 
   useEffect(() => {
     api
-      .get("/api/v1/config", { timeout: 8000 })
+      .get("/api/config", { timeout: 8000 })
       .then((res) => setConfig(res.data))
       .catch(() => setConfig(FALLBACK_CONFIG));
   }, []);

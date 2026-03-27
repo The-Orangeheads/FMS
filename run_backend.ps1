@@ -29,7 +29,7 @@ $projectRoot = $PSScriptRoot
 $backendPath = Join-Path $projectRoot "backend"
 
 # Base command
-$uvicornArgs = @("app.main:app")
+$uvicornArgs = @("main:app")
 
 # Reload flag
 if ($r) {
@@ -53,4 +53,10 @@ $uvicornArgs += "--port"
 $uvicornArgs += $p
 
 # Run uvicorn
-uvicorn @uvicornArgs
+Push-Location $backendPath
+try {
+    uvicorn @uvicornArgs
+}
+finally {
+    Pop-Location
+}

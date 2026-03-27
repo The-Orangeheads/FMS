@@ -19,7 +19,7 @@ export const useRagQuery = () => {
   ) => {
     if (queryText.trim().length === 0) return;
 
-    await trigger(`/api/v1/vectors/${collection}/query`, "post", {
+    await trigger(`/api/vectors/${collection}/query`, "post", {
       text: queryText,
       k: settings.k,
       model_name: settings.model_name,

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.services.embedding import embedding_service
+from app.services.embedding_service import embedding_service
 
 router = APIRouter(prefix="/config", tags=["config"])
 

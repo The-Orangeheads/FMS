@@ -16,7 +16,7 @@ export const useVectorDb = () => {
     setClearError(null);
 
     try {
-      await api.delete(`/api/v1/vector-db/${dbType.toLowerCase()}/clear`);
+      await api.delete(`/api/vector-db/${dbType.toLowerCase()}/clear`);
       alert(`${dbType} database cleared successfully.`);
     } catch (err: any) {
       setClearError(err.message || "Failed to clear database");

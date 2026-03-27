@@ -9,11 +9,11 @@ from app.services import vector_db_service
 from app.services.vector_db_service import images_db_service, documents_db_service
 from app.core.vector_db import ChromaDBImpl
 from app.schemas import VectorInsertRequest, VectorQueryRequest, VectorQueryResponse, ChunkInput
-from app.services.embedding import embedding_service
+from app.services.embedding_service import embedding_service
 
 # initialize logging
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1/vectors", tags=["vectors"])
+router = APIRouter(prefix="/api/vectors", tags=["vectors"])
 
 COLLECTION_MAP = {
     "images": images_db_service,

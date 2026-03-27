@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 
 from app.core.config import settings
 
-router = APIRouter(prefix="/api/v1/files", tags=["files"])
+router = APIRouter(prefix="/api/files", tags=["files"])
 
 
 def _validate_filename(filename: str) -> bool:
