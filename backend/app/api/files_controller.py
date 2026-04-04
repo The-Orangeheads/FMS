@@ -10,7 +10,6 @@ from app.core.config import settings
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
-
 def _validate_filename(filename: str) -> bool:
     """Prevent path traversal; allow only safe filenames."""
     if not filename or filename.strip() != filename:
@@ -18,7 +17,6 @@ def _validate_filename(filename: str) -> bool:
     if ".." in filename or "/" in filename or "\\" in filename:
         return False
     return True
-
 
 @router.get("/display/{filename}")
 async def display_file(filename: str):

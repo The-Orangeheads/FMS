@@ -5,6 +5,7 @@ from app.core.config import settings
 import threading
 import asyncio
 from app.services.vector_db_service import *
+from app.services.file_handler_service import *
 
 class fileSync:
 
@@ -128,6 +129,12 @@ class fileSync:
             for path in paths_to_add:
                 await asyncio.sleep(0)
                 # embed the path <- updates on embedding progress
+                try:
+                    file_handler.process_file(path)
+                except Exception as e:
+                    #notify frontend of failed
+                    pass
+                
                 # pop from frontend queue
         
         except asyncio.CancelledError:

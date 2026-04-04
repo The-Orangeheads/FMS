@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     
+    # =========================== CONSTANTS (.env) ===========================
+
     # === PROJECT INFO ===
     PROJECT_NAME: str = "Orangeheads - FMS"
     API_VERSION: str = "1.0.0"
@@ -27,7 +29,21 @@ class Settings(BaseSettings):
     SIMILARITY_THRESHOLD: float = 0.95
     DBSCAN_EPS: float = 0.1
     DBSCAN_MIN_SAMPLES: int = 2
-    
+
+    # === DUPLICATE DETECTION ===
+
+
+    # =========================== SETTINGS ===========================
+
+    cur_text_embedding_model: str = "auto"
+    cur_image_embedding_model: str = "auto"
+    cur_batch_size: int = 1
+    chunk_strategy: str = "recursive"
+    chunk_size: int = 500
+    chunk_overlap: int = 50
+    include_metadata: bool = True
+    pdf_complexity_threshold: int = 15
+
     class Config:
         """Pydantic config."""
         env_file = os.path.join(os.getcwd(), ".env")

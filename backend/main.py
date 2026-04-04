@@ -6,9 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.vector_db_controller import router as vector_db_router, clear_router
 from app.api.embedding_controller import router as embedding_router
-from app.api.ingest_controller import router as ingest_router
 from app.api.filesync_controller import router as filesync_controller
-from app.api import config_controller, query_controller
+from app.api import config_controller
 
 def create_app() -> FastAPI:
     application = FastAPI(
@@ -27,13 +26,11 @@ def create_app() -> FastAPI:
     )
 
     # Routers
-    application.include_router(ingest_router)
     application.include_router(filesync_controller)
     application.include_router(vector_db_router)
     application.include_router(clear_router)
     application.include_router(embedding_router)
     application.include_router(config_controller.router, prefix="/api")
-    application.include_router(query_controller.router, prefix="/api")
     
     @application.get("/health")
     async def health_check():

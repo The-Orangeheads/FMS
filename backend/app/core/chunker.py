@@ -1,5 +1,5 @@
 from typing import List, Dict
-
+from app.core.config import settings
 class ChunkingService:
     def __init__(self):
         pass
@@ -26,6 +26,9 @@ class ChunkingService:
         Respects paragraph boundaries but forces overlap if specified.
         """
         chunks = []
+        if chunk_size <= overlap:
+            raise ValueError("Chunk size must be greater than overlap")
+        
         paragraphs = text.split("\n\n")
         current_chunk = ""
         
@@ -46,7 +49,7 @@ class ChunkingService:
             
         return chunks
 
-    def chunk_document(self, pages: List[Dict], strategy: str, chunk_size: int, overlap: int, include_metadata: bool, filename: str) -> List[Dict]:
+    def chunk_document(self, pages: List[Dict]) -> List[Dict]:
         """
         Passes the user-defined size/overlap to the specific strategy.
         """
@@ -56,26 +59,18 @@ class ChunkingService:
             text = page["text"]
             page_num = page["page_number"]
             
-            if strategy == "recursive":
-                raw_chunks = self.chunk_recursive(text, chunk_size, overlap)
+            if settings.chunk_strategy == "recursive":
+                raw_chunks = self.chunk_recursive(text, settings.chunk_size, settings.chunk_overlap)
+            elif settings.chunk_strategy == "fixed":
+                raw_chunks = self.chunk_fixed(text, settings.chunk_size, settings.chunk_overlap)
             else:
-                raw_chunks = self.chunk_fixed(text, chunk_size, overlap)
+                raise Exception("Invalid chunking strategy")
             
             for idx, chunk_text in enumerate(raw_chunks):
                 chunk_data = {
                     "text": chunk_text,
-                    "chunk_id": f"{filename}_p{page_num}_{idx}",
-                    "size": len(chunk_text)
+                    "page_number": page_num
                 }
-                
-                if include_metadata:
-                    chunk_data["metadata"] = {
-                        "filename": filename,
-                        "page_number": page_num,
-                        "strategy": strategy,
-                        "chunk_size": chunk_size,
-                        "overlap": overlap
-                    }
                 
                 final_chunks.append(chunk_data)
                 

@@ -1,4 +1,3 @@
-from typing import Dict, Any, List, Optional
 import logging
 from fastapi import APIRouter, HTTPException, status
 import traceback
@@ -30,9 +29,9 @@ def _get_service_for_collection(collection: str) -> ChromaDBImpl:
     return service
 
 @router.post("/unified/query")
-async def unified_query(request: VectorQueryRequest):
+async def unified_query(request: VectorQueryRequest): #! Needs refactoring
     try:
-        logger.info(f"🔍 RRF Unified Search with Threshold: {request.text}")
+        logger.info(f"RRF Unified Search with Threshold: {request.text}")
         chunk_input = ChunkInput(text=request.text)
         fetch_k = request.k * 3 
         
@@ -117,10 +116,9 @@ async def unified_query(request: VectorQueryRequest):
         logger.error(f"Unified Query Failed: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-    
 
 # Separate router for clearing database
-clear_router = APIRouter(prefix="/api/v1/vector-db", tags=["vector-db"])
+clear_router = APIRouter(prefix="/api/vector-db", tags=["vector-db"])
 
 @clear_router.delete("/{db_type}/clear")
 async def clear_vector_db(db_type: str):
@@ -135,16 +133,16 @@ async def clear_vector_db(db_type: str):
         # Re-initialize services
         new_docs_svc = ChromaDBImpl(db_path, "documents")
         new_imgs_svc = ChromaDBImpl(db_path, "images")
-
+        
+        # Sync the mapping
+        COLLECTION_MAP["documents"] = new_docs_svc
+        COLLECTION_MAP["images"] = new_imgs_svc
+        
         # Update global state
         vector_db_service.documents_db_service = new_docs_svc
         vector_db_service.images_db_service = new_imgs_svc
 
-        # Sync the mapping
-        COLLECTION_MAP["documents"] = new_docs_svc
-        COLLECTION_MAP["images"] = new_imgs_svc
-
-        logger.info("✅ Database reset and collections re-initialized.")
+        logger.info("Database reset and collections re-initialized.")
         return {"status": "ok", "message": "Database cleared. Re-ingest your files."}
         
     except Exception as e:
