@@ -28,14 +28,18 @@ class ChromaDBImpl():
     def insert(self, embedding: List[float], file_path: str, metadata: Optional[Dict[str, Any]] = None, content: Optional[str] = None):
         if metadata is not None and len(metadata) == 0:
             metadata = None
-
+        else:
+            metadata = metadata or {}
+        
+        metadata["path"] = file_path
+        
         unique_id = str(uuid.uuid4())
+        print(f"Inserting: {[unique_id, file_path, metadata]}") #! FOR DEBUGGING, REMOVE LATER
         
         self.collection.add(
             embeddings=[embedding], 
             metadatas=[metadata], 
             ids=[unique_id],
-            path=file_path,
             documents=[content] if content else None
         )
 
@@ -43,11 +47,11 @@ class ChromaDBImpl():
         results = self.collection.query(
             query_embeddings=[embedding],
             n_results=k,
-            include=["metadatas", "distances", "documents", "path"]
+            include=["metadatas", "distances", "documents"]
         )
         metas = results["metadatas"][0]    # list of metadata dicts (may be empty dicts)
         dists = results["distances"][0]    # list of distances (cosine distance if collection uses cosine)
-        paths = results["path"][0]         # list of pathes
+        paths = [meta.get("path", "NA") for meta in metas]  # paths from metadata
         docs = results["documents"][0]
         
         hits = []
@@ -63,18 +67,24 @@ class ChromaDBImpl():
 
         return hits
 
-    #TODO instead of querying every chunk for files to modify, handle it some other way with unique files only
     def get_state(self):
-        results = self.collection.get(
-            include=["metadatas", "path"]
-        )
+        results = self.collection.get(include=["metadatas"])
         
         stored = {}
-        if results["ids"]:
-            for path, meta in zip(results["path"], results["metadatas"]):
-                stored[path] = f"{meta["mdate"]}:{meta["fsize"]}"  #! MAKE SURE THESE ARE STORED IN METADATA
+        if results.get("ids"):
+            for meta, id in zip(results["metadatas"], results["ids"]):
+                path = meta.get("path", "NA") 
+                mdate = meta.get("mdate", "NA")
+                fsize = meta.get("fsize", "NA")
+                entry = stored.setdefault(path, [f"{mdate}:{fsize}", []])
+                entry[1].append(id)
         return stored
         
+    def delete(self, ids : list[str]):
+        print(f"Deleting: {ids}") #! FOR DEBUGGING, REMOVE LATER
+        if not ids:
+            return
+        self.collection.delete(ids=ids)
 # -- Example Usage 
 # db = ChromaDBImpl(data_path="./chroma_storage")
 # db.insert([0.1, 0.2, 0.3], "images/car.jpg")
