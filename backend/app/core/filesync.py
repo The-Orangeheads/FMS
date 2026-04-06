@@ -20,37 +20,43 @@ class fileSync:
         return data.get("watch_directories", [])
     
     def save_dir(self):
-        with self.watchdir_lock:
-            dir = f"{settings.DATA_DIR}/watch_dir.json"
+        dirs = self.get_dirs()
+        path = f"{settings.DATA_DIR}/watch_dir.json"
 
-            with open(dir, "w") as f:
-                json.dump({"watch_directories": self.watchdir}, f)
+        with open(path, "w") as f:
+            json.dump({"watch_directories": dirs}, f)
+    
+    def get_dirs(self):
+        with self.watch_dirs_lock:
+            return list(self.watch_dirs)
     
     def __init__(self):
-        self.watchdir : list[str] = self.load_dir()
-        self.watchdir_lock = threading.RLock()
+        self.watch_dirs = set(self.load_dir())
+        self.watch_dirs_lock = threading.RLock()
         self.syncing_thread : asyncio.Task | None = None
         self.thread_lock = asyncio.Lock()
     
     def add_dir(self, dir : str):
-        with self.watchdir_lock:
-            self.watchdir.append(dir)
-            self.save_dir()
+        try:
+            with self.watch_dirs_lock:
+                self.watch_dirs.add(dir)
+                self.save_dir()
+        except:
+            raise Exception(f"directory \"{dir}\", already exists in tracked directories.")
     
-    def rem_dir(self, idx : int):
-        with self.watchdir_lock:
-            if idx >= len(self.watchdir):
-                return
-            
-            self.watchdir.pop(idx)
-            self.save_dir()
+    def rem_dir(self, dir : str):
+        try:
+            with self.watch_dirs_lock:
+                self.watch_dirs.pop(dir)
+                self.save_dir()
+        except:
+            raise Exception(f"directory \"{dir}\", does not exist in tracked directories.")
 
     def get_current_state(self) -> dict[str, str]:
-        dirs = []
-        with self.watchdir_lock:
-            dirs = self.watchdir.copy()
 
+        dirs = self.get_dirs()
         file_map = {}
+
         for dir in dirs:
             for root, _, files in os.walk(dir):
                 for fname in files:

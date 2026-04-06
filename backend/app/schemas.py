@@ -67,3 +67,6 @@ class SystemCapabilities(BaseModel):
     strategies: List[str]
     databases: List[str]
     default_model: str
+
+class DirectoryReq(BaseModel):
+    path : str
