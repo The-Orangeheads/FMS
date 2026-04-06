@@ -54,7 +54,7 @@ export function CleanupStorage() {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs leading-relaxed text-foreground-muted">
+      <p className="text-xs leading-relaxed text-foreground-muted text-center">
         Near-duplicate files detected by content similarity. Delete extras to free space; keep at least one file per group.
       </p>
       {groups.length === 0 ? (

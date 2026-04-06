@@ -1,9 +1,17 @@
-const SEGMENTS = [
-  { key: 'documents', label: 'Documents', pct: 40, color: 'var(--color-primary)' },
-  { key: 'images', label: 'Images', pct: 30, color: '#34d399' },
-  { key: 'audio', label: 'Audio', pct: 15, color: '#fbbf24' },
+type StorageSegment = {
+  key: 'documents' | 'images' | 'audio' | 'others'
+  label: string
+  pct: number
+  color: string
+  count?: number
+}
+
+const SEGMENTS: StorageSegment[] = [
+  { key: 'documents', label: 'Documents', pct: 40, color: 'var(--color-primary)', count: 452 },
+  { key: 'images', label: 'Images', pct: 30, color: '#34d399', count: 288 },
+  { key: 'audio', label: 'Audio', pct: 15, color: '#fbbf24', count: 98 },
   { key: 'others', label: 'Others', pct: 15, color: '#a78bfa' },
-] as const
+]
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180
@@ -77,7 +85,14 @@ export function StorageDonut({ usedTotalLabel }: StorageDonutProps) {
                 className="h-2.5 w-2.5 shrink-0 rounded-sm"
                 style={{ background: s.color }}
               />
-              <span className="text-foreground-muted">{s.label}</span>
+              <span className="min-w-0">
+                <span className="block text-foreground font-semibold">{s.label}</span>
+                {s.count ? (
+                  <span className="text-[0.75rem] text-foreground-muted/60">
+                    {s.count} items
+                  </span>
+                ) : null}
+              </span>
             </span>
             <span className="font-medium tabular-nums text-foreground">{s.pct}%</span>
           </li>

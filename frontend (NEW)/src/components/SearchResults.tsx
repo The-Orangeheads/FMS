@@ -13,6 +13,9 @@ const RESULTS: ResultRow[] = [
   { name: 'Customer_Interview_Notes.md', match: 88, type: 'pdf', bestPage: 3 },
   { name: 'ui_mockup_export.png', match: 85, type: 'image' },
   { name: 'Embedding_Pipeline.pdf', match: 82, type: 'pdf', bestPage: 7 },
+  { name: 'Project_Plan.docx', match: 79, type: 'pdf', bestPage: 1 },
+  { name: 'Logo_Variants.ai', match: 76, type: 'image' },
+  { name: 'Meeting_Minutes.txt', match: 73, type: 'pdf', bestPage: 5 },
 ]
 
 type SearchResultsProps = {
@@ -23,8 +26,8 @@ export function SearchResults({ query }: SearchResultsProps) {
   const q = query.trim()
 
   return (
-    <section aria-labelledby="results-heading">
-      <h2 id="results-heading" className="mb-1 text-lg font-medium text-foreground">
+    <div aria-labelledby="results-heading">
+      <h2 id="results-heading" className="mb-4 text-center text-3xl font-bold text-foreground">
         Search results
       </h2>
       {q ? (
@@ -40,7 +43,7 @@ export function SearchResults({ query }: SearchResultsProps) {
           <li key={r.name}>
             <button
               type="button"
-              className="flex w-full items-center gap-4 rounded-xl border border-border bg-surface-elevated px-4 py-3 text-left shadow-soft transition-all duration-300 ease-material hover:border-primary/30 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.995]"
+              className="flex w-full items-center gap-4 rounded-xl border border-border bg-surface-elevated px-4 py-3 text-left shadow-soft transition-all duration-300 ease-material hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98]"
             >
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-muted">
                 {r.type === 'pdf' ? (
@@ -74,6 +77,6 @@ export function SearchResults({ query }: SearchResultsProps) {
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   )
 }

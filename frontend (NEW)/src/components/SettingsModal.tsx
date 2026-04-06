@@ -13,6 +13,8 @@ const IMG_MODELS = ['clip-vit-base', 'siglip-so400m', 'imagebind-hybrid']
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const titleId = useId()
   const { theme, setTheme } = useTheme()
+  const [topK, setTopK] = useState(5)
+  const [chunkingStrategy, setChunkingStrategy] = useState<'recursive' | 'fixed'>('recursive')
   const [chunkSize, setChunkSize] = useState(512)
   const [overlap, setOverlap] = useState(64)
   const [batch, setBatch] = useState(32)
@@ -24,6 +26,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   ])
 
   if (!open) return null
+
+  const clearDatabase = () => {
+    const ok = window.confirm(
+      'Clear database?\n\nThis will remove your indexed data. Are you sure you want to continue?'
+    )
+    if (!ok) return
+    // Intentionally a no-op for now; backend wiring will be added later.
+  }
 
   return (
     <div
@@ -97,6 +107,83 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </fieldset>
 
           <div className="space-y-8">
+            <div>
+              <h3 className="mb-1 text-sm font-semibold text-foreground">Tracked directories</h3>
+              <p className="mb-3 text-xs text-foreground-muted">
+                Folders continuously scanned for new files to embed.
+              </p>
+              <ul className="mb-4 divide-y divide-border rounded-xl border border-border bg-surface-muted/50">
+                {dirs.map((path) => (
+                  <li
+                    key={path}
+                    className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                  >
+                    <span className="min-w-0 truncate font-mono text-foreground">{path}</span>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-full p-2 text-foreground-muted transition hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`Remove ${path}`}
+                      onClick={() => setDirs((d) => d.filter((x) => x !== path))}
+                    >
+                      <IconTrash className="h-5 w-5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-primary/40 bg-primary/5 py-3 text-sm font-semibold text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
+              >
+                <IconPlus className="h-5 w-5" />
+                Add new directory
+              </button>
+            </div>
+
+            <SliderField
+              label="Top K"
+              description="How many most relevant chunks to retrieve during search."
+              min={1}
+              max={20}
+              step={1}
+              value={topK}
+              onChange={setTopK}
+            />
+            <div>
+              <label
+                htmlFor="chunking-strategy"
+                className="mb-1 block text-sm font-medium text-foreground"
+              >
+                Chunking strategy
+              </label>
+              <p className="mb-2 text-xs text-foreground-muted">
+                Choose how the system breaks documents into chunks.
+              </p>
+              <div className="relative">
+                <select
+                  id="chunking-strategy"
+                  value={chunkingStrategy}
+                  onChange={(e) =>
+                    setChunkingStrategy(e.target.value as 'recursive' | 'fixed')
+                  }
+                  className="h-12 w-full appearance-none rounded-xl border border-border bg-surface-muted pl-4 pr-12 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25"
+                >
+                  <option value="recursive">Recursive</option>
+                  <option value="fixed">Fixed</option>
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground-muted"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
+            </div>
             <SliderField
               label="Chunking size"
               description="Target token length per chunk for text indexing."
@@ -130,18 +217,32 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 Document model
               </label>
               <p className="mb-2 text-xs text-foreground-muted">Embedding model for text and documents.</p>
-              <select
-                id="doc-model"
-                value={docModel}
-                onChange={(e) => setDocModel(e.target.value)}
-                className="h-12 w-full rounded-xl border border-border bg-surface-muted px-4 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25"
-              >
-                {DOC_MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  id="doc-model"
+                  value={docModel}
+                  onChange={(e) => setDocModel(e.target.value)}
+                  className="h-12 w-full appearance-none rounded-xl border border-border bg-surface-muted pl-4 pr-12 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25"
+                >
+                  {DOC_MODELS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground-muted"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
             </div>
 
             <div>
@@ -149,49 +250,45 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 Image model
               </label>
               <p className="mb-2 text-xs text-foreground-muted">Vision encoder for images and screenshots.</p>
-              <select
-                id="img-model"
-                value={imgModel}
-                onChange={(e) => setImgModel(e.target.value)}
-                className="h-12 w-full rounded-xl border border-border bg-surface-muted px-4 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25"
-              >
-                {IMG_MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  id="img-model"
+                  value={imgModel}
+                  onChange={(e) => setImgModel(e.target.value)}
+                  className="h-12 w-full appearance-none rounded-xl border border-border bg-surface-muted pl-4 pr-12 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25"
+                >
+                  {IMG_MODELS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground-muted"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
             </div>
 
-            <div>
-              <h3 className="mb-1 text-sm font-semibold text-foreground">Tracked directories</h3>
-              <p className="mb-3 text-xs text-foreground-muted">
-                Folders continuously scanned for new files to embed.
+            <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
+              <h3 className="mb-2 text-sm font-semibold text-foreground">Database</h3>
+              <p className="mb-4 text-xs text-foreground-muted">
+                Removes locally stored index data for this app.
               </p>
-              <ul className="mb-4 divide-y divide-border rounded-xl border border-border bg-surface-muted/50">
-                {dirs.map((path) => (
-                  <li
-                    key={path}
-                    className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                  >
-                    <span className="min-w-0 truncate font-mono text-foreground">{path}</span>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-full p-2 text-foreground-muted transition hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={`Remove ${path}`}
-                      onClick={() => setDirs((d) => d.filter((x) => x !== path))}
-                    >
-                      <IconTrash className="h-5 w-5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
               <button
                 type="button"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-primary/40 bg-primary/5 py-3 text-sm font-semibold text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
+                onClick={clearDatabase}
+                className="inline-flex w-full items-center justify-center rounded-full border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-500 transition hover:bg-red-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
               >
-                <IconPlus className="h-5 w-5" />
-                Add new directory
+                Clear database
               </button>
             </div>
           </div>
@@ -207,6 +304,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </button>
           <button
             type="button"
+            onClick={onClose}
             className="rounded-full bg-primary px-8 py-2.5 text-sm font-semibold text-on-primary shadow-soft transition hover:bg-primary/90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Save changes
@@ -256,7 +354,7 @@ function SliderField({
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
           aria-labelledby={`${id}-legend`}
-          className="w-24 rounded-lg border border-border bg-surface-muted px-2 py-1.5 text-right text-sm tabular-nums text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+          className="w-24 rounded-lg border border-border bg-surface-muted px-2 py-1.5 text-center text-sm tabular-nums text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
         />
       </div>
       <input

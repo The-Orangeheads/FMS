@@ -37,20 +37,36 @@ function FileThumb({ type }: { type: 'pdf' | 'image' }) {
   )
 }
 
-export function RecentlyOpened() {
+export function RecentlyOpened({
+  showViewAll = true,
+  onViewAll,
+  hideHeader = false,
+}: {
+  showViewAll?: boolean
+  onViewAll?: () => void
+  hideHeader?: boolean
+}) {
   return (
-    <section className="mb-8" aria-labelledby="recent-heading">
-      <div className="mb-4 flex items-end justify-between gap-4">
-        <h2 id="recent-heading" className="text-lg font-medium text-foreground">
-          Recently opened
-        </h2>
-        <button
-          type="button"
-          className="text-sm font-medium text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          View all
-        </button>
-      </div>
+    <div className="space-y-4">
+      {!hideHeader && (
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <h2
+            id="recent-heading"
+            className="flex-1 text-center text-3xl font-bold text-foreground"
+          >
+            Recently opened
+          </h2>
+          {showViewAll && onViewAll ? (
+            <button
+              type="button"
+              onClick={onViewAll}
+              className="text-sm font-medium text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              View all
+            </button>
+          ) : null}
+        </div>
+      )}
       <ul className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {FILES.map((f) => (
           <li key={f.name}>
@@ -71,6 +87,6 @@ export function RecentlyOpened() {
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   )
 }

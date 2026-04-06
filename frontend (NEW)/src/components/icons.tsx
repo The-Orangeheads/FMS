@@ -1,6 +1,6 @@
-type IconProps = { className?: string; 'aria-hidden'?: boolean }
+type IconProps = { className?: string }
 
-export function IconSearch({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconSearch({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -12,7 +12,7 @@ export function IconSearch({ className, 'aria-hidden': ah = true }: IconProps) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <circle cx="11" cy="11" r="7" />
       <path d="m21 21-4.2-4.2" />
@@ -21,7 +21,7 @@ export function IconSearch({ className, 'aria-hidden': ah = true }: IconProps) {
 }
 
 /** Reverse image / attachment — flat landscape glyph (no photos). */
-export function IconImageSearch({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconImageSearch({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -33,7 +33,7 @@ export function IconImageSearch({ className, 'aria-hidden': ah = true }: IconPro
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
       <circle cx="8.5" cy="8.5" r="1.5" />
@@ -42,7 +42,7 @@ export function IconImageSearch({ className, 'aria-hidden': ah = true }: IconPro
   )
 }
 
-export function IconSettings({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconSettings({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -54,7 +54,7 @@ export function IconSettings({ className, 'aria-hidden': ah = true }: IconProps)
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09A1.65 1.65 0 0 0 9 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
@@ -62,7 +62,7 @@ export function IconSettings({ className, 'aria-hidden': ah = true }: IconProps)
   )
 }
 
-export function IconFolder({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconFolder({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -74,14 +74,14 @@ export function IconFolder({ className, 'aria-hidden': ah = true }: IconProps) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
     </svg>
   )
 }
 
-export function IconFileText({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconFileText({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -93,7 +93,7 @@ export function IconFileText({ className, 'aria-hidden': ah = true }: IconProps)
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z" />
       <polyline points="14 2 14 8 20 8" />
@@ -104,7 +104,7 @@ export function IconFileText({ className, 'aria-hidden': ah = true }: IconProps)
   )
 }
 
-export function IconFileImage({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconFileImage({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -116,7 +116,7 @@ export function IconFileImage({ className, 'aria-hidden': ah = true }: IconProps
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z" />
       <polyline points="14 2 14 8 20 8" />
@@ -126,7 +126,7 @@ export function IconFileImage({ className, 'aria-hidden': ah = true }: IconProps
   )
 }
 
-export function IconSparkles({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconSparkles({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -138,14 +138,14 @@ export function IconSparkles({ className, 'aria-hidden': ah = true }: IconProps)
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" />
     </svg>
   )
 }
 
-export function IconTrash({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconTrash({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -157,7 +157,7 @@ export function IconTrash({ className, 'aria-hidden': ah = true }: IconProps) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="M3 6h18" />
       <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
@@ -168,7 +168,7 @@ export function IconTrash({ className, 'aria-hidden': ah = true }: IconProps) {
   )
 }
 
-export function IconPlus({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconPlus({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -180,7 +180,7 @@ export function IconPlus({ className, 'aria-hidden': ah = true }: IconProps) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="M5 12h14" />
       <path d="M12 5v14" />
@@ -188,7 +188,7 @@ export function IconPlus({ className, 'aria-hidden': ah = true }: IconProps) {
   )
 }
 
-export function IconLayoutGrid({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconLayoutGrid({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -200,7 +200,7 @@ export function IconLayoutGrid({ className, 'aria-hidden': ah = true }: IconProp
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <rect width="7" height="7" x="3" y="3" rx="1" />
       <rect width="7" height="7" x="14" y="3" rx="1" />
@@ -210,7 +210,7 @@ export function IconLayoutGrid({ className, 'aria-hidden': ah = true }: IconProp
   )
 }
 
-export function IconSun({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconSun({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -222,7 +222,7 @@ export function IconSun({ className, 'aria-hidden': ah = true }: IconProps) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <circle cx="12" cy="12" r="4" />
       <path d="M12 2v2" />
@@ -237,7 +237,7 @@ export function IconSun({ className, 'aria-hidden': ah = true }: IconProps) {
   )
 }
 
-export function IconMoon({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconMoon({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -249,14 +249,14 @@ export function IconMoon({ className, 'aria-hidden': ah = true }: IconProps) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
     </svg>
   )
 }
 
-export function IconRefresh({ className, 'aria-hidden': ah = true }: IconProps) {
+export function IconRefresh({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -268,12 +268,50 @@ export function IconRefresh({ className, 'aria-hidden': ah = true }: IconProps) 
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden={ah}
+      aria-hidden="true"
     >
       <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
       <path d="M3 3v5h5" />
       <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
       <path d="M16 16h5v5" />
+    </svg>
+  )
+}
+
+export function IconChevronLeft({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  )
+}
+
+export function IconChevronRight({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 18 6-6-6-6" />
     </svg>
   )
 }
