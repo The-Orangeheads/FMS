@@ -63,12 +63,9 @@ class SBERTModel(EmbeddingModelInterface):
         print(f"Token counts: min={min(token_counts)}, max={max(token_counts)}, avg={sum(token_counts)/len(token_counts):.1f}")
 
         # Sort by token length and keep track of original indices
-        indexed_texts = list(enumerate(texts))
-        indexed_texts.sort(key=lambda x: len(self.model.tokenizer.encode(x[1])))
-
-        sorted_idxs = [i for i, _ in indexed_texts]
-        sorted_texts = [t for _, t in indexed_texts]
-
+        sorted_idxs = sorted(range(len(texts)), key=lambda i: token_counts[i])
+        sorted_texts = [texts[i] for i in sorted_idxs]
+        
         # Batch encode in sorted order
         batch_size = settings.batch_size
         total_batches = math.ceil(len(sorted_texts) / batch_size)
