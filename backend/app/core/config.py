@@ -37,8 +37,9 @@ class Settings(BaseSettings):
 
     cur_text_embedding_model: str = "auto"
     cur_image_embedding_model: str = "auto"
-    cur_batch_size: int = 1
     chunk_strategy: str = "recursive"
+    batch_size: int = 1
+    top_k: int = 5
     chunk_size: int = 500
     chunk_overlap: int = 50
     include_metadata: bool = True

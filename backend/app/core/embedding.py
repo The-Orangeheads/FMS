@@ -5,7 +5,10 @@ from transformers import AutoModel, AutoProcessor
 import torch
 from PIL import Image
 import io
+import math
 import base64
+
+from app.core.config import settings
 
 
 """
@@ -59,17 +62,39 @@ class SBERTModel(EmbeddingModelInterface):
         token_counts = [len(self.model.tokenizer.encode(text)) for text in texts]
         print(f"Token counts: min={min(token_counts)}, max={max(token_counts)}, avg={sum(token_counts)/len(token_counts):.1f}")
 
-        # for batching, similar chunk sizes are recommended per batch (sorting may help if not equal sizes)
+        # Sort by token length and keep track of original indices
+        indexed_texts = list(enumerate(texts))
+        indexed_texts.sort(key=lambda x: len(self.model.tokenizer.encode(x[1])))
 
-        embeddings = self.model.encode(
-            texts, 
-            convert_to_tensor=True,
-            show_progress_bar=True,  # To show progress in console
-            batch_size=1,
-            normalize_embeddings=True  # normalize for cosine similarity
-        )
+        sorted_idxs = [i for i, _ in indexed_texts]
+        sorted_texts = [t for _, t in indexed_texts]
 
-        return embeddings.cpu().tolist()
+        # Batch encode in sorted order
+        batch_size = settings.batch_size
+        total_batches = math.ceil(len(sorted_texts) / batch_size)
+        sorted_embds = []
+
+        #! notify frontend <----
+
+        for i in range(0, len(sorted_texts), batch_size):
+            cur_batch = sorted_texts[i : i + batch_size]
+
+            batch_embeddings = self.model.encode(
+                cur_batch,
+                convert_to_tensor=True,
+                normalize_embeddings=True,
+            )
+
+            sorted_embds.extend(batch_embeddings.cpu().tolist())
+            
+            #! notify frontend <----
+        
+        # Restore the original batches order
+        ordered_embds = [None] * len(texts)
+        for sorted_pos, original_idx in enumerate(sorted_idxs):
+            ordered_embds[original_idx] = sorted_embds[sorted_pos]
+
+        return ordered_embds
 
 """
 The next part is longer because it deals with models like SigLip. Models that actually deal with
