@@ -1,17 +1,45 @@
-import { IconImageSearch, IconSearch } from './icons'
+import { IconImageSearch, IconSearch } from "./icons";
 
 type GlobalSearchBarProps = {
-  onOpenSettings: () => void
-  searchValue: string
-  onSearchValueChange: (value: string) => void
-  onSubmitSearch: () => void
-}
+  onOpenSettings: () => void;
+  searchValue: string;
+  onSearchValueChange: (value: string) => void;
+  onSubmitSearch: (results: any[]) => void;
+};
 
 export function GlobalSearchBar({
   searchValue,
   onSearchValueChange,
   onSubmitSearch,
 }: GlobalSearchBarProps) {
+  const handleSearch = async () => {
+    if (searchValue.trim().length === 0) return;
+
+    try {
+      const res = await fetch('http://localhost:8000/api/vectors/unified/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: searchValue,
+          k: 10,
+          model_name: 'bge-m3'
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Search failed: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      onSubmitSearch(data.results || []);
+    } catch (error) {
+      console.error('Backend search failed:', error);
+      onSubmitSearch([]);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-2xl">
       <div className="relative">
@@ -21,8 +49,8 @@ export function GlobalSearchBar({
         <form
           className="flex items-center gap-3"
           onSubmit={(e) => {
-            e.preventDefault()
-            onSubmitSearch()
+            e.preventDefault();
+            handleSearch();
           }}
         >
           <div className="relative flex-1">
@@ -49,6 +77,7 @@ export function GlobalSearchBar({
             <IconImageSearch className="h-6 w-6" />
           </button>
           <button
+            onClick={handleSearch}
             type="submit"
             className="inline-flex h-14 items-center justify-center rounded-2xl bg-primary px-8 text-base font-semibold text-on-primary transition-all duration-300 ease-material hover:bg-primary/90 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-soft"
           >
@@ -57,5 +86,5 @@ export function GlobalSearchBar({
         </form>
       </div>
     </div>
-  )
+  );
 }

@@ -39,6 +39,8 @@ async def unified_query(request: VectorQueryRequest): #! Needs refactoring
         doc_emb_res = embedding_service.process_embeddings("bge-m3", [chunk_input])
         raw_doc_hits = COLLECTION_MAP["documents"].query(doc_emb_res.results[0].vector, k=fetch_k)
         
+        print(f"Raw doc hits: {raw_doc_hits}")
+        
         doc_results = []
         for hit in (raw_doc_hits or []):
             meta = hit.get("metadata", {})

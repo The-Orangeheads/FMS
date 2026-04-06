@@ -13,6 +13,10 @@ const IMG_MODELS = ['clip-vit-base', 'siglip-so400m', 'imagebind-hybrid']
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const titleId = useId()
   const { theme, setTheme } = useTheme()
+  const [syncInterval, setSyncInterval] = useState(() => {
+    const stored = window.localStorage.getItem('shelf-sync-interval')
+    return stored ? parseInt(stored, 10) : 1
+  })
   const [topK, setTopK] = useState(5)
   const [chunkingStrategy, setChunkingStrategy] = useState<'recursive' | 'fixed'>('recursive')
   const [chunkSize, setChunkSize] = useState(512)
@@ -139,6 +143,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </button>
             </div>
 
+            <SliderField
+              label="Auto sync interval"
+              description="How often to check for new files and sync embeddings, in minutes."
+              min={1}
+              max={60}
+              step={1}
+              value={syncInterval}
+              onChange={(val) => {
+                setSyncInterval(val)
+                window.localStorage.setItem('shelf-sync-interval', String(val))
+              }}
+            />
             <SliderField
               label="Top K"
               description="How many most relevant chunks to retrieve during search."
@@ -304,7 +320,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              window.localStorage.setItem('shelf-sync-interval', String(syncInterval))
+              onClose()
+            }}
             className="rounded-full bg-primary px-8 py-2.5 text-sm font-semibold text-on-primary shadow-soft transition hover:bg-primary/90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             Save changes

@@ -137,7 +137,7 @@ const QuerySection = ({ isProcessing, isQuerying, onRunQuery, results, error }: 
                   <div className="space-y-3">
                     <div className="relative w-full max-w-md overflow-hidden rounded-lg border border-slate-700">
                       <img
-                        src={res.imagePath ? `/api/v1/files/display/${res.imagePath}` : ""}
+                        src={res.imagePath ? `/api/files/display/${res.imagePath}` : ""}
                         alt="Result"
                         className="w-full h-auto max-h-[300px] object-contain"
                         onError={(e) => (e.currentTarget.src = "https://via.placeholder.com/400x225?text=Preview+Unavailable")}

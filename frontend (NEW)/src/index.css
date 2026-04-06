@@ -17,19 +17,19 @@
   --shadow-card: 0 4px 24px rgb(15 23 42 / 0.08);
 }
 
-/* VS Code–inspired dark: greys with blue accent for focus & actions */
+/* Modern dark theme: deep greys with a single blue accent matching light mode */
 .dark {
-  --color-surface: #1e1e1e;
-  --color-surface-elevated: #252526;
-  --color-surface-muted: #2d2d30;
-  --color-border: #3e3e42;
-  --color-foreground: #cccccc;
-  --color-foreground-muted: #858585;
-  --color-primary: #3794ff;
+  --color-surface: #0f1115;
+  --color-surface-elevated: #16181d;
+  --color-surface-muted: #1f232a;
+  --color-border: #2d3038;
+  --color-foreground: #e5e7eb;
+  --color-foreground-muted: #9ca3af;
+  --color-primary: #3b8cff;
   --color-on-primary: #ffffff;
-  --color-ring: #3794ff;
+  --color-ring: #3b8cff;
   --shadow-soft: 0 1px 0 rgb(0 0 0 / 0.45);
-  --shadow-card: 0 8px 24px rgb(0 0 0 / 0.55);
+  --shadow-card: 0 10px 28px rgb(0 0 0 / 0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {

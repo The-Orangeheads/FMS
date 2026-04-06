@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ThemeProvider } from './context/ThemeContext'
 import { GlobalSearchBar } from './components/GlobalSearchBar'
 import { RecentlyOpened } from './components/RecentlyOpened'
@@ -10,18 +10,32 @@ import { ActivityEmbedding } from './components/ActivityEmbedding'
 import { IconSettings, IconChevronLeft, IconChevronRight } from './components/icons'
 import logo from './assets/logo.svg'
 
-type View = 'main' | 'search' | 'recents' | 'cleanup'
+type View = 'main' | 'search' | 'recents' | 'cleanup' | 'embedding'
 
 function Dashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<any[]>([])
   const [currentView, setCurrentView] = useState<View>('main')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const submitSearch = useCallback(() => {
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1024px)')
+
+    const handleBreakpoint = (event: MediaQueryListEvent | MediaQueryList) => {
+      setSidebarOpen(event.matches)
+    }
+
+    handleBreakpoint(mediaQuery)
+    mediaQuery.addEventListener('change', handleBreakpoint)
+    return () => mediaQuery.removeEventListener('change', handleBreakpoint)
+  }, [])
+
+  const submitSearch = useCallback((results: any[]) => {
     if (searchValue.trim().length > 0) {
       setSearchQuery(searchValue)
+      setSearchResults(results)
       setCurrentView('search')
     }
   }, [searchValue])
@@ -29,6 +43,7 @@ function Dashboard() {
   const goToMain = useCallback(() => setCurrentView('main'), [])
   const goToRecents = useCallback(() => setCurrentView('recents'), [])
   const goToCleanup = useCallback(() => setCurrentView('cleanup'), [])
+  const goToEmbedding = useCallback(() => setCurrentView('embedding'), [])
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
@@ -75,7 +90,7 @@ function Dashboard() {
               </section>
 
               <div className="rounded-[1.75rem] border border-border bg-surface-elevated p-4 shadow-soft">
-                <ActivityEmbedding />
+                <ActivityEmbedding onViewAll={goToEmbedding} />
               </div>
             </div>
           </div>
@@ -134,7 +149,7 @@ function Dashboard() {
                     />
                   </div>
                   <section className="rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
-                    <SearchResults query={searchQuery} />
+                    <SearchResults query={searchQuery} results={searchResults} />
                   </section>
                 </div>
               ) : currentView === 'recents' ? (
@@ -162,10 +177,23 @@ function Dashboard() {
                     <CleanupStorage />
                   </section>
                 </div>
+              ) : currentView === 'embedding' ? (
+                <div key="embedding" className="animate-slide-up">
+                  <button
+                    onClick={goToMain}
+                    className="mb-4 inline-flex items-center gap-3 rounded-2xl border border-border bg-surface-muted px-4 py-3 text-base font-semibold text-foreground transition hover:bg-surface-elevated"
+                  >
+                    Back
+                  </button>
+                  <section className="rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
+                    <h2 className="text-center mb-4 text-3xl font-bold text-foreground">Embedding activity</h2>
+                    <ActivityEmbedding onViewAll={goToEmbedding} showFull />
+                  </section>
+                </div>
               ) : (
                 // Main view
                 <div key="main" className="animate-slide-up space-y-10">
-                  <section className="rounded-[2rem] border border-border bg-surface-elevated/90 px-8 py-14 text-center shadow-soft">
+                  <section className="rounded-4xl border border-border bg-surface-elevated/90 px-8 py-14 text-center shadow-soft">
                     <p className="text-sm font-semibold uppercase tracking-[0.35em] text-primary">
                       Search your library
                     </p>
@@ -185,7 +213,7 @@ function Dashboard() {
                     </div>
                   </section>
 
-                  <section className="relative rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
+                  <section className="relative rounded-4xl border border-border bg-surface-elevated/90 p-6 shadow-soft">
                     <h2 className="text-center text-3xl font-bold text-foreground">Recently opened</h2>
                     <button
                       onClick={goToRecents}

@@ -60,3 +60,23 @@ export function useTheme() {
   if (!ctx) throw new Error('useTheme must be used within ThemeProvider')
   return ctx
 }
+
+export function useSyncInterval(): number {
+  const [interval, setInterval] = useState(() => {
+    if (typeof window === 'undefined') return 60
+    const stored = window.localStorage.getItem('shelf-sync-interval')
+    return stored ? parseInt(stored, 10) : 60
+  })
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'shelf-sync-interval' && e.newValue) {
+        setInterval(parseInt(e.newValue, 10))
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [])
+
+  return interval
+}

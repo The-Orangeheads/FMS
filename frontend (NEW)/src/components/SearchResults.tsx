@@ -20,10 +20,18 @@ const RESULTS: ResultRow[] = [
 
 type SearchResultsProps = {
   query: string
+  results?: any[]
 }
 
-export function SearchResults({ query }: SearchResultsProps) {
+export function SearchResults({ query, results }: SearchResultsProps) {
   const q = query.trim()
+
+  const transformedResults = results ? results.map((result: any) => ({
+    name: result.sourceFile || result.id,
+    match: Math.round((result.score || result.rrf_rank || 0) * 100),
+    type: result.type === 'image' ? 'image' : 'pdf',
+    bestPage: result.metadata?.page_num || undefined
+  })) : RESULTS
 
   return (
     <div aria-labelledby="results-heading">
@@ -39,7 +47,7 @@ export function SearchResults({ query }: SearchResultsProps) {
         <p className="mb-4 text-sm text-foreground-muted">Showing semantic matches.</p>
       )}
       <ul className="flex flex-col gap-3">
-        {RESULTS.map((r) => (
+        {transformedResults.map((r) => (
           <li key={r.name}>
             <button
               type="button"
