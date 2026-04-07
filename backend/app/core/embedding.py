@@ -72,10 +72,10 @@ class SBERTModel(EmbeddingModelInterface):
         sorted_embds = []
 
         #! notify frontend <----
-
+        print(f"embedding 0 out of ${total_batches}")
         for i in range(0, len(sorted_texts), batch_size):
             cur_batch = sorted_texts[i : i + batch_size]
-
+            
             batch_embeddings = self.model.encode(
                 cur_batch,
                 convert_to_tensor=True,
@@ -85,6 +85,8 @@ class SBERTModel(EmbeddingModelInterface):
             sorted_embds.extend(batch_embeddings.cpu().tolist())
             
             #! notify frontend <----
+            print(f"embedding ${i + 1} out of ${total_batches}")
+            
         
         # Restore the original batches order
         ordered_embds = [None] * len(texts)

@@ -88,12 +88,12 @@ class fileSync:
             await asyncio.wait_for(self.thread_lock.acquire(), timeout=1)
         except asyncio.TimeoutError:
             return
-        print("Initiating init")
         
         try:
+            print("cleaning up")
             if self.syncing_thread is not None:
                 if not self.syncing_thread.done():
-                     # sent waiting for old queue cancelling to frontend
+                    # sent waiting for old queue cancelling to frontend
                     self.syncing_thread.cancel()
                     
                 try:
@@ -109,6 +109,7 @@ class fileSync:
     async def sync(self):
         """Syncs changes to files to DB"""
         try:
+            print("reading file changes")
             cur_state = self.get_current_state()
             await asyncio.sleep(0)
 
@@ -118,12 +119,14 @@ class fileSync:
             stored_docs = documents_db_service.get_state()
             await asyncio.sleep(0)
 
+            print("deleting outdated embeddings")
             images_db_service.delete(self.get_outdated(cur_state, stored_images))
             await asyncio.sleep(0)
 
             documents_db_service.delete(self.get_outdated(cur_state, stored_docs))
             await asyncio.sleep(0)
 
+            print("initializing queue")
             paths_to_add = []
             for path, key in cur_state.items():
                 await asyncio.sleep(0)
@@ -131,7 +134,9 @@ class fileSync:
                     and (path not in stored_docs or key != stored_docs[path][0])):
                     paths_to_add.append(path)
             
-            #send queue to frontend
+            #send queue to frontend and unlock sync button
+            # websocket magic here
+            print("embedding files")
             for path in paths_to_add:
                 await asyncio.sleep(0)
                 # embed the path <- updates on embedding progress

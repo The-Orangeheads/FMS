@@ -32,6 +32,7 @@ class FileHandler:
         )
         
         # 1. Process and Chunk Text
+        print("extracting and chunking document")
         ext = Path(path).suffix.lower()
         extracted_pages = []
         
@@ -48,9 +49,9 @@ class FileHandler:
         )
         
 
+        print("preprocessing chunk data")
         for chunk in result_chunks:
             # 2. Prepare Input for Text Model
-
             valid_chunks = []
             valid_inputs = []
 
@@ -72,6 +73,7 @@ class FileHandler:
         stat = Path(path).stat()
 
         # 4. Store in DOCUMENTS
+        print("storing embeddings in DB")
         for idx, item in enumerate(embedded_data.results):
             # Use valid_raw_chunks instead of result_chunks to keep indices aligned
             text_content = valid_chunks[idx]['text']
@@ -97,6 +99,7 @@ class FileHandler:
         )
         
         # 1. Read and Encode Image to Base64
+        print("encoding image")
         with open(path, "rb") as f:
             image_bytes = f.read()
             image_b64 = base64.b64encode(image_bytes).decode('utf-8')
@@ -108,11 +111,13 @@ class FileHandler:
         )]
         
         # 3. Embed using the current images embedding model
+        print("embedding image")
         embedded_data = embedding_service.process_embeddings(target_model, inputs)
 
         stat = Path(path).stat()
         
         # 4. Store in IMAGES Collection (storage_filename used for display endpoint)
+        print("storing in DB")
         for idx, item in enumerate(embedded_data.results):
             vector_db_service.images_db_service.insert(
                 embedding=item.vector,
@@ -131,10 +136,14 @@ class FileHandler:
             # notify frontend
             raise Exception("File not found")
 
+        # start timer here
         mime_type, _ = mimetypes.guess_type(path)
         # IMAGE PROCESSING
         if mime_type.startswith("image/"):
             self.process_image(path)
+            
         # TEXT/DOCUMENT PROCESSING
         else:
             self.process_document(path)
+            
+        print("finished with time X")
