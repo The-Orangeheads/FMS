@@ -50,11 +50,10 @@ class FileHandler:
         
 
         print("preprocessing chunk data")
+        # 2. Prepare Input for Text Model
+        valid_chunks = []
+        valid_inputs = []
         for chunk in result_chunks:
-            # 2. Prepare Input for Text Model
-            valid_chunks = []
-            valid_inputs = []
-
             clean_text = " ".join(chunk['text'].split())
             # Only keep chunks that have actual alphanumeric characters and are longer than 5 chars
             if len(clean_text) > 5 and any(char.isalnum() for char in clean_text):
@@ -62,7 +61,7 @@ class FileHandler:
                     text=clean_text,
                 ))
                 valid_chunks.append(chunk)
-
+        
         if not valid_inputs:
             logger.warning(f"File {path} resulted in 0 valid chunks after filtering.")
             return {"status": "skipped", "message": "No meaningful text found in file."}
