@@ -1,4 +1,5 @@
 import { IconFileImage, IconFileText } from "./icons";
+import { addRecentlyOpened } from "./RecentlyOpened";
 
 export type ResultRow = {
   name: string;
@@ -63,6 +64,9 @@ export function SearchResults({
   results,
   isLoading = false,
 }: SearchResultsProps) {
+  const electron = (window as any).require
+    ? (window as any).require("electron")
+    : null;
   const q = query.trim();
   const isImagePathQuery =
     (q.includes("\\") || q.includes("/")) &&
@@ -146,6 +150,15 @@ export function SearchResults({
           <li key={r.name}>
             <button
               type="button"
+              onClick={async () => {
+                if (!electron?.ipcRenderer || !r.path) return;
+                try {
+                  await electron.ipcRenderer.invoke("open-file-in-os", r.path);
+                  addRecentlyOpened(r.path);
+                } catch (error) {
+                  console.error("Failed to open file:", error);
+                }
+              }}
               className="flex w-full items-center gap-4 rounded-xl border border-border bg-surface-elevated px-4 py-3 text-left shadow-soft transition-all duration-300 ease-material hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98]"
             >
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-muted">

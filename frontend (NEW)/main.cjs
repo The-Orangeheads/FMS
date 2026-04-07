@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
 
 let mainWindow;
 
@@ -7,6 +8,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     autoHideMenuBar: true,
+    icon: path.join(__dirname, 'src', 'assets', 'logo.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -50,6 +52,17 @@ ipcMain.handle('open-image-picker', async () => {
   } else {
     return filePaths[0];
   }
+});
+
+ipcMain.handle('open-file-in-os', async (_event, filePath) => {
+  if (!filePath || typeof filePath !== 'string') {
+    return { ok: false, error: 'Invalid file path' };
+  }
+  const error = await shell.openPath(filePath);
+  if (error) {
+    return { ok: false, error };
+  }
+  return { ok: true };
 });
 
 app.whenReady().then(createWindow);

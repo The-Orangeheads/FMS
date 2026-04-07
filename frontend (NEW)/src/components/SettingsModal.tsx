@@ -135,7 +135,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     >
       <button
         type="button"
-        className={`absolute inset-0 bg-foreground/40 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`absolute inset-0 bg-foreground/40 dark:bg-black/70 backdrop-blur-sm transition-opacity duration-300 ${
           open ? "opacity-100" : "opacity-0"
         }`}
         aria-label="Close settings"

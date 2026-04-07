@@ -403,6 +403,7 @@ export function ActivityEmbedding({
         0
       )
     : 0;
+  const hasSidebarActivity = Boolean(active) || queueWithoutActive.length > 0 || history.length > 0;
   const totalQueueFiles = active?.totalFiles ?? totalFilesRef.current;
   const completedQueueFiles = active?.completedFiles ?? completedFilesRef.current;
   const currentQueueFraction = active
@@ -543,6 +544,14 @@ export function ActivityEmbedding({
             </li>
           ))}
 
+        {!showFull && !hasSidebarActivity && (
+          <li>
+            <p className="rounded-xl border border-dashed border-border bg-surface-muted/50 px-4 py-5 text-center text-sm text-foreground-muted">
+              No activities yet
+            </p>
+          </li>
+        )}
+
         {showFull && (
           <li key="embedding-queue-panel">
             <div className="rounded-3xl border border-border bg-surface-elevated p-4">
@@ -660,7 +669,7 @@ export function ActivityEmbedding({
           </li>
         )}
       </ul>
-      {hiddenCount > 0 && !showFull && onViewAll && (
+      {!showFull && onViewAll && (
         <div className="mt-4">
           <button
             type="button"
@@ -668,7 +677,7 @@ export function ActivityEmbedding({
             onClick={(event) => event.preventDefault()}
             className="inline-flex w-full justify-center rounded-2xl border border-border bg-surface-muted px-4 py-3 text-sm font-semibold text-primary hover:bg-surface-elevated"
           >
-            View all ({hiddenCount} more)
+            {hiddenCount > 0 ? `View all (${hiddenCount} more)` : "View all"}
           </button>
         </div>
       )}

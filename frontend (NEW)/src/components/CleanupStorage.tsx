@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { IconFileText } from "./icons";
+import { addRecentlyOpened } from "./RecentlyOpened";
 
 type DupFile = {
   id: string;
   name: string;
+  path?: string;
   size: string;
   modifiedAt: string;
   selected: boolean;
@@ -146,7 +148,15 @@ export function CleanupStorage() {
   };
 
   const openFile = (file: DupFile) => {
-    console.log(`Open file: ${file.name}`);
+    const electron = (window as any).require
+      ? (window as any).require("electron")
+      : null;
+    if (!electron?.ipcRenderer) return;
+    const targetPath = file.path || file.name;
+    electron.ipcRenderer
+      .invoke("open-file-in-os", targetPath)
+      .then(() => addRecentlyOpened(targetPath))
+      .catch((err: unknown) => console.error("Failed to open file:", err));
   };
 
   return (

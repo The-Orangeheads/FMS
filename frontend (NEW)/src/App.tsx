@@ -61,7 +61,7 @@ function Dashboard() {
       <div className="flex min-h-0 flex-1">
         {/* Left Sidebar - Fixed */}
         <aside
-          className={`fixed left-0 top-0 z-10 h-screen w-[min(100%,280px)] flex-col border-r border-border bg-surface-elevated/95 shadow-soft backdrop-blur-sm transition-transform duration-300 ease-out lg:flex ${
+          className={`fixed left-0 top-0 z-10 h-screen w-[min(100%,300px)] flex-col border-r border-border bg-surface-elevated/95 shadow-soft backdrop-blur-sm transition-transform duration-300 ease-out lg:flex ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -95,7 +95,7 @@ function Dashboard() {
                     Storage analytics
                   </p>
                 </div>
-                <div className="mx-auto max-w-[220px] overflow-hidden rounded-[1.5rem] bg-surface-muted p-4">
+                <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.5rem] bg-surface-muted p-4">
                   <StorageDonut usedTotalLabel="186 GB" />
                 </div>
               </section>
@@ -121,7 +121,7 @@ function Dashboard() {
 
         {/* Main Content - Scrollable */}
         <div
-          className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ease-out ${sidebarOpen ? "lg:ml-[min(100%,280px)]" : "lg:ml-0"}`}
+          className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ease-out ${sidebarOpen ? "lg:ml-[min(100%,300px)]" : "lg:ml-0"}`}
         >
           {!sidebarOpen ? (
             <>
@@ -248,7 +248,7 @@ function Dashboard() {
                       View all
                     </button>
                     <div className="mt-6">
-                      <RecentlyOpened hideHeader />
+                      <RecentlyOpened hideHeader maxItems={4} />
                     </div>
                   </section>
 
