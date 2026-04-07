@@ -21,10 +21,39 @@ const RESULTS: ResultRow[] = [
 type SearchResultsProps = {
   query: string
   results?: any[]
+  isLoading?: boolean
 }
 
-export function SearchResults({ query, results }: SearchResultsProps) {
+export function SearchResults({ query, results, isLoading = false }: SearchResultsProps) {
   const q = query.trim()
+
+  if (isLoading) {
+    return (
+      <div aria-labelledby="results-heading">
+        <h2 id="results-heading" className="mb-4 text-center text-3xl font-bold text-foreground">
+          Search results
+        </h2>
+        <p className="mb-4 text-sm text-foreground-muted">
+          Fetching matches for <span className="font-medium text-foreground">&ldquo;{q}&rdquo;</span>…
+        </p>
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-4 rounded-xl border border-border bg-surface-elevated px-4 py-3 shadow-soft animate-pulse"
+            >
+              <span className="h-14 w-14 rounded-lg bg-surface-muted" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <span className="block h-4 w-3/4 rounded-xl bg-surface-muted" />
+                <span className="block h-3 w-1/2 rounded-xl bg-surface-muted" />
+              </div>
+              <span className="h-8 w-16 rounded-full bg-surface-muted" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   const transformedResults = results ? results.map((result: any) => ({
     name: result.sourceFile || result.id,

@@ -21,6 +21,7 @@ function Dashboard() {
   const [searchValue, setSearchValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [currentView, setCurrentView] = useState<View>("main");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -36,16 +37,19 @@ function Dashboard() {
     return () => mediaQuery.removeEventListener("change", handleBreakpoint);
   }, []);
 
-  const submitSearch = useCallback(
-    (results: any[]) => {
-      if (searchValue.trim().length > 0) {
-        setSearchQuery(searchValue);
-        setSearchResults(results);
-        setCurrentView("search");
-      }
-    },
-    [searchValue],
-  );
+  const submitSearch = useCallback((results: any[]) => {
+    setSearchResults(results);
+    setIsSearching(false);
+  }, []);
+
+  const startSearch = useCallback((query: string) => {
+    if (query.trim().length > 0) {
+      setSearchQuery(query);
+      setSearchResults([]);
+      setIsSearching(true);
+      setCurrentView("search");
+    }
+  }, []);
 
   const goToMain = useCallback(() => setCurrentView("main"), []);
   const goToRecents = useCallback(() => setCurrentView("recents"), []);
@@ -154,6 +158,7 @@ function Dashboard() {
                       onOpenSettings={() => setSettingsOpen(true)}
                       searchValue={searchValue}
                       onSearchValueChange={setSearchValue}
+                      onSearchStart={startSearch}
                       onSubmitSearch={submitSearch}
                     />
                   </div>
@@ -161,6 +166,7 @@ function Dashboard() {
                     <SearchResults
                       query={searchQuery}
                       results={searchResults}
+                      isLoading={isSearching}
                     />
                   </section>
                 </div>
@@ -225,6 +231,7 @@ function Dashboard() {
                         onOpenSettings={() => setSettingsOpen(true)}
                         searchValue={searchValue}
                         onSearchValueChange={setSearchValue}
+                        onSearchStart={startSearch}
                         onSubmitSearch={submitSearch}
                       />
                     </div>

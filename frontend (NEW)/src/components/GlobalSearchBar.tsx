@@ -4,16 +4,20 @@ type GlobalSearchBarProps = {
   onOpenSettings: () => void;
   searchValue: string;
   onSearchValueChange: (value: string) => void;
+  onSearchStart: (query: string) => void;
   onSubmitSearch: (results: any[]) => void;
 };
 
 export function GlobalSearchBar({
   searchValue,
   onSearchValueChange,
+  onSearchStart,
   onSubmitSearch,
 }: GlobalSearchBarProps) {
   const handleSearch = async () => {
     if (searchValue.trim().length === 0) return;
+
+    onSearchStart(searchValue);
 
     try {
       const res = await fetch('http://localhost:8000/api/vectors/unified/query', {

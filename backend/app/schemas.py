@@ -41,7 +41,7 @@ class EmbeddingResponse(BaseModel):
     """
     model_used: str
     results: List[EmbeddingOutput]
-    processing_time_ms: float
+    processing_time_ms: float 
 
 class VectorInsertRequest(BaseModel):
     embedding: List[float]
