@@ -41,12 +41,12 @@ async def unified_query(request: VectorQueryRequest): #! Needs refactoring
         doc_emb_res = embedding_service.process_embeddings(text_model, [chunk_input])
         raw_doc_hits = COLLECTION_MAP["documents"].query(doc_emb_res.results[0].vector, k=settings.top_k)
         
-        doc_results = []
+        results = []
         for hit in (raw_doc_hits or []):
             score = hit.get("score", 0.0)
             if score < 0.10:
                 continue
-            doc_results.append({
+            results.append({
                 "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
                 "score": score,
                 "text": hit.get("document", ""),
@@ -63,8 +63,7 @@ async def unified_query(request: VectorQueryRequest): #! Needs refactoring
         raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=settings.top_k)
         
         model = embedding_service._get_model(image_model)
-        
-        img_results = []
+
         for hit in (raw_img_hits or []):
             score = hit.get("score", 0.0)
             score = score * 100 - 10        # optimize the scale and bias
@@ -75,37 +74,16 @@ async def unified_query(request: VectorQueryRequest): #! Needs refactoring
             if score < 0.10:
                 continue
 
-            img_results.append({
+            results.append({
                 "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
                 "score": score,
                 "type": "image",
                 "metadata": meta
             })
         
-        # RECIPROCAL RANK FUSION (RRF)
-        rrf_scores = {} 
-        final_map = {}  
-        
-        for rank, item in enumerate(doc_results):
-            item_id = item["id"]
-            rrf_scores[item_id] = rrf_scores.get(item_id, 0) + (1.0 / (60 + rank))
-            final_map[item_id] = item
+        results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
-        for rank, item in enumerate(img_results):
-            item_id = item["id"]
-            rrf_scores[item_id] = rrf_scores.get(item_id, 0) + (1.0 / (60 + rank))
-            if item_id not in final_map:
-                final_map[item_id] = item
-
-        combined_results = []
-        for item_id, rrf_score in rrf_scores.items():
-            item = final_map[item_id]
-            item["rrf_rank"] = rrf_score 
-            combined_results.append(item)
-
-        combined_results.sort(key=lambda x: x["rrf_rank"], reverse=True)
-
-        return {"results": combined_results[:settings.top_k]}
+        return {"results": results[:settings.top_k]}
 
     except Exception as e:
         logger.error(f"Unified Query Failed: {e}")
@@ -153,30 +131,3 @@ def insert_vector(collection: str, req: VectorInsertRequest):
     except Exception as e:
         logger.error(f"Insert failed: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to insert vector.")
-
-@router.post("/{collection}/query", response_model=VectorQueryResponse)
-def query_vectors(collection: str, req: VectorQueryRequest):
-    svc = _get_service_for_collection(collection)
-    try:
-        chunk = ChunkInput(text=req.text, metadata={})
-        embedding_res = embedding_service.process_embeddings(req.model_name, [chunk])
-        
-        if not embedding_res.results:
-            raise ValueError("Embedding service returned no results")
-            
-        query_vector = embedding_res.results[0].vector
-        raw_hits = svc.query(query_vector, settings.top_k)
-        
-        formatted_results = []
-        for hit in (raw_hits or []):
-            formatted_results.append({
-                "score": hit.get("score", 0.0),
-                "text": hit.get("document") or hit.get("metadata", {}).get("text") or "No text content",
-                "metadata": hit.get("metadata", {}) 
-            })
-
-        return VectorQueryResponse(results=formatted_results)
-
-    except Exception as e:
-        logger.exception(f"Query Error for {collection}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
