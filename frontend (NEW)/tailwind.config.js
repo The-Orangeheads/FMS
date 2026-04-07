@@ -28,6 +28,50 @@ export default {
       transitionTimingFunction: {
         material: 'cubic-bezier(0.2, 0, 0, 1)',
       },
+      animation: {
+        'slide-up': 'slideUp 400ms cubic-bezier(0.2, 0, 0, 1)',
+        'fade-in': 'fadeIn 300ms cubic-bezier(0.2, 0, 0, 1)',
+        'fade-out': 'fadeOut 300ms cubic-bezier(0.2, 0, 0, 1)',
+        'scale-in': 'scaleIn 300ms cubic-bezier(0.2, 0, 0, 1)',
+      },
+      keyframes: {
+        slideUp: {
+          from: {
+            opacity: '0',
+            transform: 'translateY(20px)',
+          },
+          to: {
+            opacity: '1',
+            transform: 'translateY(0)',
+          },
+        },
+        fadeIn: {
+          from: {
+            opacity: '0',
+          },
+          to: {
+            opacity: '1',
+          },
+        },
+        fadeOut: {
+          from: {
+            opacity: '1',
+          },
+          to: {
+            opacity: '0',
+          },
+        },
+        scaleIn: {
+          from: {
+            opacity: '0',
+            transform: 'scale(0.95)',
+          },
+          to: {
+            opacity: '1',
+            transform: 'scale(1)',
+          },
+        },
+      },
     },
   },
   plugins: [],

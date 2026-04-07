@@ -70,3 +70,6 @@ class SystemCapabilities(BaseModel):
 
 class DirectoryReq(BaseModel):
     path : str
+    
+class DirectoryListRes(BaseModel):
+    dirs : List[str]

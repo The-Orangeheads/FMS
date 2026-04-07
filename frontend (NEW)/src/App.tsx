@@ -1,60 +1,65 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ThemeProvider } from './context/ThemeContext'
-import { GlobalSearchBar } from './components/GlobalSearchBar'
-import { RecentlyOpened } from './components/RecentlyOpened'
-import { SearchResults } from './components/SearchResults'
-import { SettingsModal } from './components/SettingsModal'
-import { CleanupStorage } from './components/CleanupStorage'
-import { StorageDonut } from './components/StorageDonut'
-import { ActivityEmbedding } from './components/ActivityEmbedding'
-import { IconSettings, IconChevronLeft, IconChevronRight } from './components/icons'
-import logo from './assets/logo.svg'
+import { useCallback, useEffect, useState } from "react";
+import { ThemeProvider } from "./context/ThemeContext";
+import { GlobalSearchBar } from "./components/GlobalSearchBar";
+import { RecentlyOpened } from "./components/RecentlyOpened";
+import { SearchResults } from "./components/SearchResults";
+import { SettingsModal } from "./components/SettingsModal";
+import { CleanupStorage } from "./components/CleanupStorage";
+import { StorageDonut } from "./components/StorageDonut";
+import { ActivityEmbedding } from "./components/ActivityEmbedding";
+import {
+  IconSettings,
+  IconChevronLeft,
+  IconChevronRight,
+} from "./components/icons";
+import logo from "./assets/logo.svg";
 
-type View = 'main' | 'search' | 'recents' | 'cleanup' | 'embedding'
+type View = "main" | "search" | "recents" | "cleanup" | "embedding";
 
 function Dashboard() {
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [searchValue, setSearchValue] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
-  const [currentView, setCurrentView] = useState<View>('main')
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [currentView, setCurrentView] = useState<View>("main");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(min-width: 1024px)')
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
 
     const handleBreakpoint = (event: MediaQueryListEvent | MediaQueryList) => {
-      setSidebarOpen(event.matches)
-    }
+      setSidebarOpen(event.matches);
+    };
 
-    handleBreakpoint(mediaQuery)
-    mediaQuery.addEventListener('change', handleBreakpoint)
-    return () => mediaQuery.removeEventListener('change', handleBreakpoint)
-  }, [])
+    handleBreakpoint(mediaQuery);
+    mediaQuery.addEventListener("change", handleBreakpoint);
+    return () => mediaQuery.removeEventListener("change", handleBreakpoint);
+  }, []);
 
-  const submitSearch = useCallback((results: any[]) => {
-    if (searchValue.trim().length > 0) {
-      setSearchQuery(searchValue)
-      setSearchResults(results)
-      setCurrentView('search')
-    }
-  }, [searchValue])
+  const submitSearch = useCallback(
+    (results: any[]) => {
+      if (searchValue.trim().length > 0) {
+        setSearchQuery(searchValue);
+        setSearchResults(results);
+        setCurrentView("search");
+      }
+    },
+    [searchValue],
+  );
 
-  const goToMain = useCallback(() => setCurrentView('main'), [])
-  const goToRecents = useCallback(() => setCurrentView('recents'), [])
-  const goToCleanup = useCallback(() => setCurrentView('cleanup'), [])
-  const goToEmbedding = useCallback(() => setCurrentView('embedding'), [])
+  const goToMain = useCallback(() => setCurrentView("main"), []);
+  const goToRecents = useCallback(() => setCurrentView("recents"), []);
+  const goToCleanup = useCallback(() => setCurrentView("cleanup"), []);
+  const goToEmbedding = useCallback(() => setCurrentView("embedding"), []);
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
       <div className="flex min-h-0 flex-1">
         {/* Left Sidebar - Fixed */}
         <aside
-          className={
-            `fixed left-0 top-0 z-10 h-screen w-[min(100%,280px)] flex-col border-r border-border bg-surface-elevated/95 shadow-soft backdrop-blur-sm transition-transform duration-300 ease-out lg:flex ${
-              sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-            }`
-          }
+          className={`fixed left-0 top-0 z-10 h-screen w-[min(100%,280px)] flex-col border-r border-border bg-surface-elevated/95 shadow-soft backdrop-blur-sm transition-transform duration-300 ease-out lg:flex ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
         >
           <div className="flex-shrink-0 border-b border-border px-5 py-4">
             <div className="flex items-center justify-between gap-3">
@@ -62,7 +67,9 @@ function Dashboard() {
                 <span className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl">
                   <img src={logo} alt="Shelf logo" className="h-12 w-12" />
                 </span>
-                <p className="text-2xl font-semibold leading-tight text-foreground">Shelf</p>
+                <p className="text-2xl font-semibold leading-tight text-foreground">
+                  Shelf
+                </p>
               </div>
               <button
                 type="button"
@@ -109,7 +116,9 @@ function Dashboard() {
         </aside>
 
         {/* Main Content - Scrollable */}
-        <div className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ease-out ${sidebarOpen ? 'lg:ml-[min(100%,280px)]' : 'lg:ml-0'}`}>
+        <div
+          className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ease-out ${sidebarOpen ? "lg:ml-[min(100%,280px)]" : "lg:ml-0"}`}
+        >
           {!sidebarOpen ? (
             <>
               <button
@@ -132,7 +141,7 @@ function Dashboard() {
           ) : null}
           <main className="min-w-0 flex-1 overflow-y-auto px-6 py-8 lg:px-10">
             <div className="mx-auto max-w-4xl">
-              {currentView === 'search' ? (
+              {currentView === "search" ? (
                 <div key="search" className="animate-slide-up">
                   <div className="mb-6">
                     <button
@@ -149,10 +158,13 @@ function Dashboard() {
                     />
                   </div>
                   <section className="rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
-                    <SearchResults query={searchQuery} results={searchResults} />
+                    <SearchResults
+                      query={searchQuery}
+                      results={searchResults}
+                    />
                   </section>
                 </div>
-              ) : currentView === 'recents' ? (
+              ) : currentView === "recents" ? (
                 <div key="recents" className="animate-slide-up">
                   <button
                     onClick={goToMain}
@@ -164,7 +176,7 @@ function Dashboard() {
                     <RecentlyOpened />
                   </section>
                 </div>
-              ) : currentView === 'cleanup' ? (
+              ) : currentView === "cleanup" ? (
                 <div key="cleanup" className="animate-slide-up">
                   <button
                     onClick={goToMain}
@@ -173,11 +185,13 @@ function Dashboard() {
                     Back
                   </button>
                   <section className="rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
-                    <h2 className="text-center mb-4 text-3xl font-bold text-foreground">Cleanup Storage</h2>
+                    <h2 className="text-center mb-4 text-3xl font-bold text-foreground">
+                      Cleanup Storage
+                    </h2>
                     <CleanupStorage />
                   </section>
                 </div>
-              ) : currentView === 'embedding' ? (
+              ) : currentView === "embedding" ? (
                 <div key="embedding" className="animate-slide-up">
                   <button
                     onClick={goToMain}
@@ -186,7 +200,9 @@ function Dashboard() {
                     Back
                   </button>
                   <section className="rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
-                    <h2 className="text-center mb-4 text-3xl font-bold text-foreground">Embedding activity</h2>
+                    <h2 className="text-center mb-4 text-3xl font-bold text-foreground">
+                      Embedding activity
+                    </h2>
                     <ActivityEmbedding onViewAll={goToEmbedding} showFull />
                   </section>
                 </div>
@@ -201,7 +217,8 @@ function Dashboard() {
                       Find documents, notes, and images instantly.
                     </h1>
                     <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-foreground-muted">
-                      Enter a keyword, phrase, or metadata search term to explore your AI-powered library.
+                      Enter a keyword, phrase, or metadata search term to
+                      explore your AI-powered library.
                     </p>
                     <div className="mt-10">
                       <GlobalSearchBar
@@ -214,7 +231,9 @@ function Dashboard() {
                   </section>
 
                   <section className="relative rounded-4xl border border-border bg-surface-elevated/90 p-6 shadow-soft">
-                    <h2 className="text-center text-3xl font-bold text-foreground">Recently opened</h2>
+                    <h2 className="text-center text-3xl font-bold text-foreground">
+                      Recently opened
+                    </h2>
                     <button
                       onClick={goToRecents}
                       className="absolute top-8 right-6 text-sm font-bold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -227,7 +246,9 @@ function Dashboard() {
                   </section>
 
                   <section className="relative rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
-                    <h2 className="text-center text-3xl font-bold text-foreground">Storage cleanup</h2>
+                    <h2 className="text-center text-3xl font-bold text-foreground">
+                      Storage cleanup
+                    </h2>
                     <button
                       onClick={goToCleanup}
                       className="absolute top-8 right-6 text-sm font-bold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -244,9 +265,12 @@ function Dashboard() {
           </main>
         </div>
       </div>
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
-  )
+  );
 }
 
 export default function App() {
@@ -254,5 +278,5 @@ export default function App() {
     <ThemeProvider>
       <Dashboard />
     </ThemeProvider>
-  )
+  );
 }

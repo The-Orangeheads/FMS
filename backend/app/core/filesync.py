@@ -47,7 +47,7 @@ class fileSync:
     def rem_dir(self, dir : str):
         try:
             with self.watch_dirs_lock:
-                self.watch_dirs.pop(dir)
+                self.watch_dirs.remove(dir)
                 self.save_dir()
         except:
             raise Exception(f"directory \"{dir}\", does not exist in tracked directories.")
