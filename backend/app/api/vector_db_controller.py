@@ -7,8 +7,9 @@ from app.core.config import settings
 from app.services import vector_db_service
 from app.services.vector_db_service import images_db_service, documents_db_service
 from app.core.vector_db import ChromaDBImpl
-from app.schemas import VectorInsertRequest, VectorQueryRequest, VectorQueryResponse, ChunkInput
+from app.schemas import VectorInsertRequest, VectorQueryRequest, ImgQueryRequest, ChunkInput
 from app.services.embedding_service import embedding_service
+import base64
 
 # initialize logging
 logger = logging.getLogger(__name__)
@@ -28,65 +29,89 @@ def _get_service_for_collection(collection: str) -> ChromaDBImpl:
         )
     return service
 
-@router.post("/unified/query")
-async def unified_query(request: VectorQueryRequest): #! Needs refactoring
-    try:
-        logger.info(f"RRF Unified Search with Threshold: {request.text}")
-        chunk_input = ChunkInput(text=request.text)
-        
-        text_model = (settings.DEFAULT_TEXT_EMBEDDING_MODEL
-                      if settings.cur_text_embedding_model == "auto"
-                      else settings.cur_text_embedding_model)
-        
-        doc_emb_res = embedding_service.process_embeddings(text_model, [chunk_input])
-        raw_doc_hits = COLLECTION_MAP["documents"].query(doc_emb_res.results[0].vector, k=settings.top_k)
-        
-        results = []
-        for hit in (raw_doc_hits or []):
-            score = hit.get("score", 0.0)
-            if score < 0.10:
-                continue
-            results.append({
-                "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
-                "score": score,
-                "text": hit.get("document", ""),
-                "type": "text",
-                "metadata": hit.get("metadata", {}),
-            })
+def text_query(chunk_input):
+    text_model = (settings.DEFAULT_TEXT_EMBEDDING_MODEL
+                if settings.cur_text_embedding_model == "auto"
+                else settings.cur_text_embedding_model)
+    
+    doc_emb_res = embedding_service.process_embeddings(text_model, [chunk_input])
+    raw_doc_hits = COLLECTION_MAP["documents"].query(doc_emb_res.results[0].vector, k=settings.top_k)
+    
+    results = []
+    for hit in (raw_doc_hits or []):
+        score = hit.get("score", 0.0)
+        if score < 0.10:
+            continue
+        results.append({
+            "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
+            "score": score,
+            "text": hit.get("document", ""),
+            "type": "text",
+            "metadata": hit.get("metadata", {}),
+        })
+    
+    return results
 
-        # image search
-        image_model = (settings.DEFAULT_IMAGE_EMBEDDING_MODEL
-                      if settings.cur_image_embedding_model == "auto"
-                      else settings.cur_image_embedding_model)
-        print(image_model)
-        img_emb_res = embedding_service.process_embeddings(image_model, [chunk_input])
-        raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=settings.top_k)
-        
-        model = embedding_service._get_model(image_model)
+def image_query(chunk_input, score_correction : bool):
+    image_model = (settings.DEFAULT_IMAGE_EMBEDDING_MODEL
+                    if settings.cur_image_embedding_model == "auto"
+                    else settings.cur_image_embedding_model)
+    print(image_model)
+    img_emb_res = embedding_service.process_embeddings(image_model, [chunk_input])
+    raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=settings.top_k)
+    
+    model = embedding_service._get_model(image_model)
+    results = []
 
-        for hit in (raw_img_hits or []):
-            score = hit.get("score", 0.0)
+    for hit in (raw_img_hits or []):
+        score = hit.get("score", 0.0)
+        if score_correction:
             score = score * 100 - 10        # optimize the scale and bias
             score = torch.sigmoid(torch.tensor(score)).item()
-            meta = hit.get("metadata", {})
-            
-            # Skip if less than 10% match
-            if score < 0.10:
-                continue
-
-            results.append({
-                "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
-                "score": score,
-                "type": "image",
-                "metadata": meta
-            })
+        meta = hit.get("metadata", {})
         
+        # Skip if less than 10% match
+        if score < 0.10:
+            continue
+
+        results.append({
+            "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
+            "score": score,
+            "type": "image",
+            "metadata": meta
+        })
+    
+    return results
+
+@router.post("/unified/query")
+async def unified_query(req: VectorQueryRequest):
+    try:
+        chunk_input = ChunkInput(text=req.text)
+        results = text_query(chunk_input) + image_query(chunk_input, True)
         results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
         return {"results": results[:settings.top_k]}
 
     except Exception as e:
         logger.error(f"Unified Query Failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/image/query")
+async def reverse_image_query(req: ImgQueryRequest):
+    try:
+        with open(req.path, "rb") as f:
+            image_bytes = f.read()
+            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+
+        chunk_input = ChunkInput(image_base64=image_b64)
+        results = image_query(chunk_input, False)
+        results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
+
+        return {"results": results}
+    
+    except Exception as e:
+        logger.error(f"Image Query Failed: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 

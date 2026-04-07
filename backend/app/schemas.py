@@ -47,9 +47,11 @@ class VectorInsertRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = None  # may be empty
 
 class VectorQueryRequest(BaseModel):
-    # embedding: List[float]
     text: str
 
+class ImgQueryRequest(BaseModel):
+    path: str
+    
 class QueryResultMatch(BaseModel):
     text: str
     score: float
