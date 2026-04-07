@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 
 let mainWindow;
 
@@ -9,6 +9,7 @@ function createWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true,
+      contextIsolation: false,
     },
   });
 
@@ -22,6 +23,17 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+ipcMain.handle('open-directory-picker', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'], // Restrict to folders only
+  });
+  if (canceled) {
+    return null;
+  } else {
+    return filePaths[0]; // Return the absolute path
+  }
+});
 
 app.whenReady().then(createWindow);
 

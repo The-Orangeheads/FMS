@@ -147,3 +147,5 @@ models/
 # Temporary files
 *.tmp
 *.temp
+
+.venv

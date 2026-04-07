@@ -1,14 +1,14 @@
 import uvicorn
-from fastapi import FastAPI
-from app.core.config import settings
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 import asyncio
 
 from app.core.config import settings
 from app.api.vector_db_controller import router as vector_db_router, clear_router
-from app.api.filesync_controller import router as filesync_controller
+from app.api.filesync_controller import router as filesync_router
 from app.api import config_controller
+from app.core.websockets import ws_manager
 
 from app.services.filesync_service import file_syncer
 
@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
         lifespan = lifespan
     )
 
-    # Middleware
+    # Middleware - allow all for development to stop 403s
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -41,22 +41,28 @@ def create_app() -> FastAPI:
     )
 
     # Routers
-    application.include_router(filesync_controller)
+    application.include_router(filesync_router)
     application.include_router(vector_db_router)
     application.include_router(clear_router)
     application.include_router(config_controller.router, prefix="/api")
     
+    # WebSocket Route - Placing it here ensures it's at /ws
+    @application.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        await ws_manager.connect(websocket)
+        try:
+            while True:
+                # Keep connection alive
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            ws_manager.disconnect(websocket)
+        except Exception:
+            ws_manager.disconnect(websocket)
+
     @application.get("/health")
     async def health_check():
-        return {
-            "status": "healthy",
-            "project": settings.PROJECT_NAME,
-            "version": settings.API_VERSION
-        }
+        return {"status": "healthy"}
     
     return application
 
 app = create_app()
-
-# if __name__ == "__main__":
-#     uvicorn.run("main:app", port=8000, log_level="info", reload=True)

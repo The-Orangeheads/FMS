@@ -56,6 +56,14 @@ class Settings(BaseSettings):
 # global settings instance
 settings = Settings()
 
+def update_settings(new_config: dict):
+    for key, value in new_config.items():
+        if hasattr(settings, key):
+            setattr(settings, key, value)
+            print(f"Updated setting: {key} = {value}")
+        else:
+            print(f"Warning: Attempted to update unknown setting '{key}'")
+
 # create the required directories
 os.makedirs(settings.MODELS_DIR, exist_ok=True)
 os.makedirs(settings.DATA_DIR, exist_ok=True)
