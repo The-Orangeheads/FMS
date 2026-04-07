@@ -35,6 +35,23 @@ ipcMain.handle('open-directory-picker', async () => {
   }
 });
 
+ipcMain.handle('open-image-picker', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      {
+        name: 'Images',
+        extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
+      },
+    ],
+  });
+  if (canceled) {
+    return null;
+  } else {
+    return filePaths[0];
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {

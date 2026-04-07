@@ -35,13 +35,27 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [batch, setBatch] = useState(32);
   const [docModel, setDocModel] = useState(DOC_MODELS[0]);
   const [imgModel, setImgModel] = useState(IMG_MODELS[0]);
-  const [dirs, setDirs] = useState([]);
+  const [dirs, setDirs] = useState<string[]>([]);
+  const [dirsLoading, setDirsLoading] = useState(false);
+
+  const refreshTrackedDirectories = async () => {
+    setDirsLoading(true);
+    try {
+      const data = await fetch("http://localhost:8000/api/directory/paths").then((res) =>
+        res.json(),
+      );
+      setDirs(data.dirs || []);
+    } catch (err) {
+      console.error("Failed to load tracked directories:", err);
+      setDirs([]);
+    } finally {
+      setDirsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (open) {
-      fetch("http://localhost:8000/api/directory/paths")
-        .then((res) => res.json())
-        .then((data) => setDirs(data.dirs || []));
+      void refreshTrackedDirectories();
     }
   }, [open]);
 
@@ -64,11 +78,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         );
 
         if (response.ok) {
-          // Refresh the UI list
-          const data = await fetch(
-            "http://localhost:8000/api/directory/paths",
-          ).then((res) => res.json());
-          setDirs(data.dirs || []);
+          await refreshTrackedDirectories();
         }
       }
     } catch (err) {
@@ -76,6 +86,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   };
   const handleRemoveDirectory = async (path: string) => {
+    setDirsLoading(true);
     await fetch(`http://localhost:8000/api/directory/paths`, {
       method: "DELETE",
       headers: {
@@ -84,9 +95,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       body: JSON.stringify({ path: path }), // Send as JSON body
     });
 
-    fetch("http://localhost:8000/api/directory/paths")
-      .then((res) => res.json())
-      .then((data) => setDirs(data.dirs || []));
+    await refreshTrackedDirectories();
   };
 
   const clearDatabase = () => {
@@ -213,28 +222,37 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 Folders continuously scanned for new files to embed.
               </p>
               <ul className="mb-4 divide-y divide-border rounded-xl border border-border bg-surface-muted/50">
-                {/* Array.from(new Set(dirs)) ensures every path is unique */}
-                {Array.from(new Set(dirs)).map((path) => (
-                  <li
-                    key={path} // Path is now guaranteed to be unique in this render
-                    className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                  >
-                    <span className="min-w-0 truncate font-mono text-foreground">
-                      {path}
-                    </span>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-full p-2 text-foreground-muted transition hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={`Remove ${path}`}
-                      onClick={() => {
-                        setDirs((d) => d.filter((x) => x !== path));
-                        handleRemoveDirectory(path);
-                      }}
-                    >
-                      <IconTrash className="h-5 w-5" />
-                    </button>
+                {dirsLoading ? (
+                  <li className="px-4 py-3 text-sm text-foreground-muted">
+                    Loading tracked directories...
                   </li>
-                ))}
+                ) : Array.from(new Set(dirs)).length === 0 ? (
+                  <li className="px-4 py-3 text-sm text-foreground-muted">
+                    No tracked directories
+                  </li>
+                ) : (
+                  Array.from(new Set(dirs)).map((path) => (
+                    <li
+                      key={path}
+                      className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                    >
+                      <span className="min-w-0 truncate font-mono text-foreground">
+                        {path}
+                      </span>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-full p-2 text-foreground-muted transition hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Remove ${path}`}
+                        onClick={() => {
+                          void handleRemoveDirectory(path);
+                        }}
+                        disabled={dirsLoading}
+                      >
+                        <IconTrash className="h-5 w-5" />
+                      </button>
+                    </li>
+                  ))
+                )}
               </ul>
               <button
                 onClick={() => {

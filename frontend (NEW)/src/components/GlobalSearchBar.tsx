@@ -14,6 +14,61 @@ export function GlobalSearchBar({
   onSearchStart,
   onSubmitSearch,
 }: GlobalSearchBarProps) {
+  const electron = (window as any).require
+    ? (window as any).require("electron")
+    : null;
+
+  const runReverseImageSearch = async (selectedPath: string) => {
+    onSearchStart(selectedPath);
+    try {
+      let res = await fetch("http://localhost:8000/api/image/query", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          path: selectedPath,
+        }),
+      });
+
+      // Compatibility fallback for current backend route naming.
+      if (!res.ok && res.status === 404) {
+        res = await fetch("http://localhost:8000/api/vectors/image/query", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            path: selectedPath,
+          }),
+        });
+      }
+
+      if (!res.ok) {
+        throw new Error(`Reverse image search failed: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      onSubmitSearch(data.results || []);
+    } catch (error) {
+      console.error("Reverse image search failed:", error);
+      onSubmitSearch([]);
+    }
+  };
+
+  const handleImageSearch = async () => {
+    if (electron?.ipcRenderer) {
+      try {
+        const pickedPath = await electron.ipcRenderer.invoke("open-image-picker");
+        if (!pickedPath) return;
+        await runReverseImageSearch(pickedPath);
+        return;
+      } catch (error) {
+        console.error("Electron image picker failed:", error);
+      }
+    }
+  };
+
   const handleSearch = async () => {
     if (searchValue.trim().length === 0) return;
 
@@ -76,6 +131,7 @@ export function GlobalSearchBar({
             type="button"
             title="Reverse image search"
             aria-label="Attach or search by image"
+            onClick={handleImageSearch}
             className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-border bg-surface-muted text-foreground-muted transition-all duration-200 hover:bg-primary/10 hover:text-primary hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <IconImageSearch className="h-6 w-6" />
