@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = 50
     include_metadata: bool = True
     pdf_complexity_threshold: int = 15
+    auto_sync_interval_seconds : float = 60
 
     class Config:
         """Pydantic config."""

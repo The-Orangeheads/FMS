@@ -29,7 +29,33 @@ class fileSync:
     def get_dirs(self):
         with self.watch_dirs_lock:
             return list(self.watch_dirs)
-    
+        
+    async def get_current_sync_thread(self) -> asyncio.Task | None:
+        async with self.thread_lock:
+            return self.syncing_thread
+        
+    async def safe_wait(self, task : asyncio.Task | None):
+        if task is not None:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        
+    async def auto_sync(self):
+        try:
+            while True:
+                start = asyncio.get_event_loop().time()
+
+                #! consider adding this if we don't want auto sync to interrupt manual sync
+                # await self.safe_wait(await self.get_current_sync_thread())
+
+                await self.initiate_sync()
+                await self.safe_wait(await self.get_current_sync_thread())
+
+                elapsed = asyncio.get_event_loop().time() - start
+                await asyncio.sleep(max(0, settings.auto_sync_interval_seconds - elapsed))
+        except asyncio.CancelledError:
+            pass
     def __init__(self):
         self.watch_dirs = set(self.load_dir())
         self.watch_dirs_lock = threading.RLock()
@@ -52,10 +78,17 @@ class fileSync:
         except:
             raise Exception(f"directory \"{dir}\", does not exist in tracked directories.")
 
-    def get_current_state(self) -> dict[str, str]:
+    def get_current_state(self) -> list[dict[str, str] | dict[str, list[str | int]] | int]:
 
         dirs = self.get_dirs()
         file_map = {}
+
+        file_data : dict[str, list[str | int]] = {}
+        other_count : int = 0
+        other_size : int = 0
+        """
+            "path" : [type, size]
+        """
 
         for dir in dirs:
             for root, _, files in os.walk(dir):
@@ -64,12 +97,23 @@ class fileSync:
                     
                     try:
                         stat = path.stat()
+                        file_type = file_handler.detect_file_type(str(path))
+
+                        if file_type == "other":
+                            other_count += 1
+                            other_size += stat.st_size
+                            continue
+
+                        path_str = str(path)
+
                         # Use mtime+size as a fingerprint
-                        file_map[str(path)] = f"{stat.st_mtime_ns}:{stat.st_size}"
+                        file_map[path_str] = f"{stat.st_mtime_ns}:{stat.st_size}"
+
+                        file_data[path_str] = [file_type, stat.st_size]
                     except (PermissionError, OSError) as e:
                         print(f"Skipping {path}: {e}")
         
-        return file_map
+        return [file_map, file_data, other_count, other_size]
 
     def get_outdated(self, cur_state, stored_state) -> list:
         ids_to_rem = []
@@ -110,7 +154,18 @@ class fileSync:
         """Syncs changes to files to DB"""
         try:
             print("reading file changes")
-            cur_state = self.get_current_state()
+            analytics : dict[str, list[int]] = {
+                "image": [0, 0, 0, 0],
+                "audio": [0, 0, 0, 0],
+                "document": [0, 0, 0, 0],
+                "other": [0, 0, 0, 0]
+            }
+            """
+                file_data["category/type"] = [done, total, done_size, total_size]
+            """
+
+            [cur_state, file_data, analytics["other"][1], analytics["other"][3]] = self.get_current_state()
+            
             await asyncio.sleep(0)
 
             stored_images = images_db_service.get_state()
@@ -130,9 +185,20 @@ class fileSync:
             paths_to_add = []
             for path, key in cur_state.items():
                 await asyncio.sleep(0)
+
+                [file_type, fsize] = file_data[path]
+                category = analytics[file_type]
+                category[0] += 1
+                category[1] += 1
+                category[2] += fsize
+                category[3] += fsize
                 if ((path not in stored_images or key != stored_images[path][0])
                     and (path not in stored_docs or key != stored_docs[path][0])):
+                    category[0] -= 1
+                    category[2] -= fsize
                     paths_to_add.append(path)
+
+            #TODO Send analytics to frontend
             
             #send queue to frontend and unlock sync button
             # websocket magic here
@@ -140,6 +206,12 @@ class fileSync:
             for path in paths_to_add:
                 await asyncio.sleep(0)
                 # embed the path <- updates on embedding progress
+
+                #! TIME BOMB PREVENTION SQUAD: uncomment if you don't have models
+                # print(f"Processing: {path}")
+                # await asyncio.sleep(5)
+                # continue
+
                 try:
                     file_handler.process_file(path)
                 except Exception as e:
