@@ -16,10 +16,30 @@ from app.schemas import ChunkInput
 logger = logging.getLogger(__name__)
 
 class FileHandler:
+    SUPPORTED_DOC_FORMATS = {".pdf", ".txt"}
+    
     def __init__(self):
         self.pdf_handler = PDFTextHandler(settings.pdf_complexity_threshold)
         self.chunker = ChunkingService()
     
+    def detect_file_type(self, path: str) -> str:
+        """
+            returns either "image" or "audio" or "document" or "other"
+        """
+        mime_type, _ = mimetypes.guess_type(path)
+        mime_type = mime_type or ""
+        # IMAGE PROCESSING
+        if mime_type.startswith("image/"):
+            return "image"
+        if mime_type.startswith("audio/"):
+            return "audio"
+        
+        ext = Path(path).suffix.lower()
+        if ext in self.SUPPORTED_DOC_FORMATS:
+            return "document"
+        
+        return "other"
+
     def process_document(self, path: str, notify_cb=None) -> List[Dict]:
         logger.info(f"Processing text/document file: {path}")
         file_name = os.path.basename(path)
@@ -149,13 +169,17 @@ class FileHandler:
             raise Exception("Chunk size cannot be less than or equal to the chunk overlap")
         
         if not os.path.exists(path):
-            # notify frontend
             raise Exception("File not found")
-        
-        mime_type, _ = mimetypes.guess_type(path)
+
+        file_type = self.detect_file_type(path)
+
         # IMAGE PROCESSING
-        if mime_type.startswith("image/"):
-            self.process_image(path, notify_cb=notify_cb)
+        if file_type == "image":
+            self.process_image(path, notify_cb)
+            
         # TEXT/DOCUMENT PROCESSING
+        elif file_type == "document":
+            self.process_document(path, notify_cb)
         else:
-            self.process_document(path, notify_cb=notify_cb)
+            raise Exception("Unsupported file type")
+
