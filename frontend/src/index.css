@@ -1,1 +1,106 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+@import 'tailwindcss';
+@config '../tailwind.config.js';
+
+:root {
+  --color-surface: #f4f7fb;
+  --color-surface-elevated: #ffffff;
+  --color-surface-muted: #e8eef6;
+  --color-border: #d8e2ef;
+  --color-foreground: #0f172a;
+  --color-foreground-muted: #64748b;
+  --color-primary: #3b8cff;
+  --color-on-primary: #ffffff;
+  --color-ring: #3b8cff;
+  --shadow-soft: 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-card: 0 4px 24px rgb(15 23 42 / 0.08);
+}
+
+/* Modern dark theme: deep greys with a single blue accent matching light mode */
+.dark {
+  --color-surface: #0f1115;
+  --color-surface-elevated: #16181d;
+  --color-surface-muted: #1f232a;
+  --color-border: #2d3038;
+  --color-foreground: #e5e7eb;
+  --color-foreground-muted: #9ca3af;
+  --color-primary: #3b8cff;
+  --color-on-primary: #ffffff;
+  --color-ring: #3b8cff;
+  --shadow-soft: 0 1px 0 rgb(0 0 0 / 0.45);
+  --shadow-card: 0 10px 28px rgb(0 0 0 / 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Roboto, system-ui, sans-serif;
+  background-color: var(--color-surface);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* Animation utilities */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
