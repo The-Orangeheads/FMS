@@ -23,7 +23,6 @@ class EmbeddingRequest(BaseModel):
     """
     The main payload sent to the Controller.
     """
-    model_name: str = Field(..., description="The key of the model to use (e.g., 'siglip2')")
     chunks: List[ChunkInput]
 
 # --- OUTPUTS (To Vector DB Team) ---
@@ -39,7 +38,6 @@ class EmbeddingResponse(BaseModel):
     """
     The response sent back to the core logic or Vector DB controller.
     """
-    model_used: str
     results: List[EmbeddingOutput]
     processing_time_ms: float 
 
@@ -51,8 +49,6 @@ class VectorInsertRequest(BaseModel):
 class VectorQueryRequest(BaseModel):
     # embedding: List[float]
     text: str
-    k: int = 5
-    model_name: str = "bge-m3" # default model
 
 class QueryResultMatch(BaseModel):
     text: str
@@ -61,12 +57,6 @@ class QueryResultMatch(BaseModel):
 
 class VectorQueryResponse(BaseModel):
     results: List[Dict[str, Any]]
-    
-class SystemCapabilities(BaseModel):
-    models: List[str]
-    strategies: List[str]
-    databases: List[str]
-    default_model: str
 
 class DirectoryReq(BaseModel):
     path : str

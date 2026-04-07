@@ -159,7 +159,6 @@ class EmbeddingService:
         duration = (time.time() - start_time) * 1000 
         
         return EmbeddingResponse(
-            model_used=effective_model_key,
             results=results,
             processing_time_ms=duration
         )

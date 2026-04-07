@@ -33,62 +33,55 @@ async def unified_query(request: VectorQueryRequest): #! Needs refactoring
     try:
         logger.info(f"RRF Unified Search with Threshold: {request.text}")
         chunk_input = ChunkInput(text=request.text)
-        fetch_k = request.k * 3 
         
-        # text searge with BGE-M3 
-        doc_emb_res = embedding_service.process_embeddings("bge-m3", [chunk_input])
-        raw_doc_hits = COLLECTION_MAP["documents"].query(doc_emb_res.results[0].vector, k=fetch_k)
+        text_model = (settings.DEFAULT_TEXT_EMBEDDING_MODEL
+                      if settings.cur_text_embedding_model == "auto"
+                      else settings.cur_text_embedding_model)
         
-        print(f"Raw doc hits: {raw_doc_hits}")
+        doc_emb_res = embedding_service.process_embeddings(text_model, [chunk_input])
+        raw_doc_hits = COLLECTION_MAP["documents"].query(doc_emb_res.results[0].vector, k=settings.top_k)
         
         doc_results = []
         for hit in (raw_doc_hits or []):
-            meta = hit.get("metadata", {})
-            raw_text = hit.get("document") or meta.get("text") or ""
-            clean_text = " ".join(raw_text.split()).strip()
-            
-            # remove junk/whitespace
-            if not clean_text or len(clean_text) < 5:
+            score = hit.get("score", 0.0)
+            if score < 0.10:
                 continue
-                
             doc_results.append({
-                "id": hit.get("id") or f"doc_{uuid4().hex[:6]}",
-                "score": hit.get("score", 0.0),
-                "text": clean_text,
+                "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
+                "score": score,
+                "text": hit.get("document", ""),
                 "type": "text",
-                "sourceFile": meta.get("filename") or "Unknown",
-                "metadata": meta
+                "metadata": hit.get("metadata", {}),
             })
 
-        # image search with SigLIP 2
-        img_emb_res = embedding_service.process_embeddings("siglip2", [chunk_input])
-        raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=fetch_k)
+        # image search
+        image_model = (settings.DEFAULT_IMAGE_EMBEDDING_MODEL
+                      if settings.cur_image_embedding_model == "auto"
+                      else settings.cur_image_embedding_model)
+        print(image_model)
+        img_emb_res = embedding_service.process_embeddings(image_model, [chunk_input])
+        raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=settings.top_k)
         
-        model = embedding_service._get_model("siglip2")
-
+        model = embedding_service._get_model(image_model)
+        
         img_results = []
         for hit in (raw_img_hits or []):
             score = hit.get("score", 0.0)
             score = score * 100 - 10        # optimize the scale and bias
             score = torch.sigmoid(torch.tensor(score)).item()
             meta = hit.get("metadata", {})
-
+            
             # Skip if less than 10% match
             if score < 0.10:
                 continue
 
-            if not meta.get("storage_path"):
-                continue
-
             img_results.append({
-                "id": hit.get("id") or f"img_{uuid4().hex[:6]}",
+                "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
                 "score": score,
                 "type": "image",
-                "imagePath": meta.get("storage_path"), 
-                "sourceFile": meta.get("filename") or "Unknown",
                 "metadata": meta
             })
-
+        
         # RECIPROCAL RANK FUSION (RRF)
         rrf_scores = {} 
         final_map = {}  
@@ -112,7 +105,7 @@ async def unified_query(request: VectorQueryRequest): #! Needs refactoring
 
         combined_results.sort(key=lambda x: x["rrf_rank"], reverse=True)
 
-        return {"results": combined_results[:request.k]}
+        return {"results": combined_results[:settings.top_k]}
 
     except Exception as e:
         logger.error(f"Unified Query Failed: {e}")
@@ -172,7 +165,7 @@ def query_vectors(collection: str, req: VectorQueryRequest):
             raise ValueError("Embedding service returned no results")
             
         query_vector = embedding_res.results[0].vector
-        raw_hits = svc.query(query_vector, req.k)
+        raw_hits = svc.query(query_vector, settings.top_k)
         
         formatted_results = []
         for hit in (raw_hits or []):

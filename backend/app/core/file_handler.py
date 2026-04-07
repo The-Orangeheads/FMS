@@ -90,7 +90,7 @@ class FileHandler:
             )
     
     def process_image(self, path: str):
-        logger.info(f"Porocessing image file: {path}")
+        logger.info(f"Processing image file: {path}")
 
         target_model = (
             settings.DEFAULT_IMAGE_EMBEDDING_MODEL 

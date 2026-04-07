@@ -12,7 +12,6 @@ def create_embeddings(request: EmbeddingRequest):
     try:
         # Pass data to the service layer
         response = embedding_service.process_embeddings(
-            model_name=request.model_name,
             chunks=request.chunks
         )
         return response

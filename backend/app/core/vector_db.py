@@ -49,21 +49,21 @@ class ChromaDBImpl():
             n_results=k,
             include=["metadatas", "distances", "documents"]
         )
+        
+        ids = results["ids"][0]
         metas = results["metadatas"][0]    # list of metadata dicts (may be empty dicts)
         dists = results["distances"][0]    # list of distances (cosine distance if collection uses cosine)
-        paths = [meta.get("path", "NA") for meta in metas]  # paths from metadata
         docs = results["documents"][0]
         
         hits = []
-        for path, meta, dist, doc in zip(paths, metas, dists, docs):
+        for id, meta, dist, doc in zip(ids, metas, dists, docs):
             # if metadata was empty, create an object and add file_path from the id
             meta_out = dict(meta or {})
-            meta_out.setdefault("file_path", path)  # attach file_path using the id
             try:
                 score = 1.0 - float(dist)  # convert cosine distance -> similarity
             except Exception:
                 score = None
-            hits.append({"score": score, "metadata": meta_out, "document": doc})
+            hits.append({"id": id, "score": score, "metadata": meta_out, "document": doc})
 
         return hits
 

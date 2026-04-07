@@ -179,7 +179,7 @@ export function StorageDonut({ usedTotalLabel }: StorageDonutProps) {
                 <span className="block text-foreground font-semibold">{segment.label}</span>
                 <span className="text-[0.75rem] text-foreground-muted">
                   {segment.supportsEmbedding ? (
-                    <>{segment.embeddedCount}/{segment.count} embedded</>
+                    <>{segment.embeddedCount}/{segment.count} items</>
                   ) : (
                     <>{segment.count} items</>
                   )}
