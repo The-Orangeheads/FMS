@@ -2,7 +2,7 @@ import os
 import shutil
 import logging
 import base64
-import re
+import time
 import mimetypes
 from typing import List, Dict
 from pathlib import Path
@@ -135,7 +135,8 @@ class FileHandler:
             # notify frontend
             raise Exception("File not found")
 
-        # start timer here
+        time_start = start = time.time()
+
         mime_type, _ = mimetypes.guess_type(path)
         # IMAGE PROCESSING
         if mime_type.startswith("image/"):
@@ -144,5 +145,7 @@ class FileHandler:
         # TEXT/DOCUMENT PROCESSING
         else:
             self.process_document(path)
-            
-        print("finished with time X")
+
+        time_end = time.time()
+        print(f"finished with time ${time_end-time_start}")
+        
