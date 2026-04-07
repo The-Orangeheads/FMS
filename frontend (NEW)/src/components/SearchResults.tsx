@@ -64,6 +64,12 @@ export function SearchResults({
   isLoading = false,
 }: SearchResultsProps) {
   const q = query.trim();
+  const isImagePathQuery =
+    (q.includes("\\") || q.includes("/")) &&
+    /\.(png|jpe?g|gif|webp|bmp)$/i.test(q);
+  const queryLabel = isImagePathQuery
+    ? q.split(/[/\\]/).filter(Boolean).pop() || q
+    : q;
 
   if (isLoading) {
     return (
@@ -76,7 +82,7 @@ export function SearchResults({
         </h2>
         <p className="mb-4 text-sm text-foreground-muted">
           Fetching matches for{" "}
-          <span className="font-medium text-foreground">&ldquo;{q}&rdquo;</span>
+          <span className="font-medium text-foreground">&ldquo;{queryLabel}&rdquo;</span>
           …
         </p>
         <div className="space-y-3">
@@ -128,7 +134,7 @@ export function SearchResults({
       {q ? (
         <p className="mb-4 text-sm text-foreground-muted">
           Showing matches for{" "}
-          <span className="font-medium text-foreground">&ldquo;{q}&rdquo;</span>
+          <span className="font-medium text-foreground">&ldquo;{queryLabel}&rdquo;</span>
         </p>
       ) : (
         <p className="mb-4 text-sm text-foreground-muted">
