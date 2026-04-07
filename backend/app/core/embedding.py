@@ -72,11 +72,12 @@ class SBERTModel(EmbeddingModelInterface):
         total_batches = math.ceil(len(sorted_texts) / batch_size)
         sorted_embds = []
 
-        #! notify frontend <----
+        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
+        
         if notify_cb:
-            notify_cb(f"embedding 0 out of {total_batches}")
+            notify_cb(f"Embedded 0 batches out of {total_batches}: {file_name} : 10")
 
-        for i in range(0, len(sorted_texts), batch_size):
+        for batch_index, i in enumerate(range(0, len(sorted_texts), batch_size), start=1):
             cur_batch = sorted_texts[i : i + batch_size]
             
             batch_embeddings = self.model.encode(
@@ -87,9 +88,9 @@ class SBERTModel(EmbeddingModelInterface):
 
             sorted_embds.extend(batch_embeddings.cpu().tolist())
             
-            #! notify frontend <----
             if notify_cb:
-                notify_cb(f"embedding {i + 1} out of {total_batches}")
+                percentage = 10 + round(batch_index/total_batches * 85)
+                notify_cb(f"Embedded {batch_index} batches out of {total_batches}: {file_name} : {percentage}")
             
         # Restore the original batches order
         ordered_embds = [None] * len(texts)

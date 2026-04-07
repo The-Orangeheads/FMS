@@ -1,8 +1,6 @@
 import os
-import shutil
 import logging
 import base64
-import time
 import mimetypes
 from typing import List, Dict
 from pathlib import Path
@@ -24,6 +22,7 @@ class FileHandler:
     
     def process_document(self, path: str, notify_cb=None) -> List[Dict]:
         logger.info(f"Processing text/document file: {path}")
+        file_name = os.path.basename(path)
         
         target_model = (
             settings.DEFAULT_TEXT_EMBEDDING_MODEL
@@ -33,7 +32,7 @@ class FileHandler:
         
         # 1. Process and Chunk Text
         if notify_cb:
-            notify_cb(f"Extracting text...: {os.path.basename(path)}")
+            notify_cb(f"Extracting text...: {os.path.basename(path)}, 3")
 
         ext = Path(path).suffix.lower()
         extracted_pages = []
@@ -51,7 +50,7 @@ class FileHandler:
         )
         
         if notify_cb:
-            notify_cb(f"Preprocessing chunks...: {os.path.basename(path)}")
+            notify_cb(f"Preprocessing chunks...: {os.path.basename(path)} : 5")
         
         # 2. Prepare Input for Text Model
         valid_chunks = []
@@ -62,6 +61,7 @@ class FileHandler:
             if len(clean_text) > 5 and any(char.isalnum() for char in clean_text):
                 valid_inputs.append(ChunkInput(
                     text=clean_text,
+                    metadata={"path": path}
                 ))
                 valid_chunks.append(chunk)
         
@@ -77,7 +77,7 @@ class FileHandler:
         # 4. Store in DOCUMENTS
 
         if notify_cb:
-            notify_cb(f"Storing embeddings...: {os.path.basename(path)}")
+            notify_cb(f"Storing embeddings... : {file_name} : 95")
 
         for idx, item in enumerate(embedded_data.results):
             # Use valid_raw_chunks instead of result_chunks to keep indices aligned
@@ -96,6 +96,7 @@ class FileHandler:
     
     def process_image(self, path: str, notify_cb=None):
         logger.info(f"Processing image file: {path}")
+        file_name = os.path.basename(path)
         
         target_model = (
             settings.DEFAULT_IMAGE_EMBEDDING_MODEL 
@@ -106,7 +107,7 @@ class FileHandler:
         # 1. Read and Encode Image to Base64
 
         if notify_cb:
-            notify_cb(f"Encoding image...: {os.path.basename(path)}")
+            notify_cb(f"Encoding image... : {file_name} : 10")
             
         with open(path, "rb") as f:
             image_bytes = f.read()
@@ -115,13 +116,14 @@ class FileHandler:
         # 2. Prepare Input for SigLIP (No chunking needed for single images)
         inputs = [ChunkInput(
             text=None,
-            image_base64=image_b64
+            image_base64=image_b64,
+            metadata={"path": path}
         )]
         
         # 3. Embed using the current images embedding model
 
         if notify_cb:
-            notify_cb(f"Embedding image...: {os.path.basename(path)}")
+            notify_cb(f"Embedding image... : {file_name} : 30")
         
         embedded_data = embedding_service.process_embeddings(target_model, inputs, notify_cb)
 
@@ -130,7 +132,7 @@ class FileHandler:
         # 4. Store in IMAGES Collection (storage_filename used for display endpoint)
 
         if notify_cb:
-            notify_cb(f"Storing embedding...: {os.path.basename(path)}")
+            notify_cb(f"Storing embedding... : {file_name} : 95")
         
         for idx, item in enumerate(embedded_data.results):
             vector_db_service.images_db_service.insert(
@@ -149,9 +151,7 @@ class FileHandler:
         if not os.path.exists(path):
             # notify frontend
             raise Exception("File not found")
-
-        time_start = time.time()
-
+        
         mime_type, _ = mimetypes.guess_type(path)
         # IMAGE PROCESSING
         if mime_type.startswith("image/"):
@@ -159,8 +159,3 @@ class FileHandler:
         # TEXT/DOCUMENT PROCESSING
         else:
             self.process_document(path, notify_cb=notify_cb)
-
-        time_end = time.time()
-        
-        if notify_cb:
-            notify_cb(f"Finished processing in {time_end-time_start} seconds: {os.path.basename(path)}")

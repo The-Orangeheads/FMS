@@ -103,7 +103,6 @@ class fileSync:
             return
         
         try:
-            print("cleaning up")
             if self.syncing_thread is not None:
                 if not self.syncing_thread.done():
                     # sent waiting for old queue cancelling to frontend
@@ -160,29 +159,27 @@ class fileSync:
                     "queue": queue_data,
                     })
                 )
-            print("embedding files")
-            print(f"embedding files — queue size: {len(paths_to_add)}")  # add this
+            
             for index, path in enumerate(paths_to_add):
                 await asyncio.sleep(0)
-                # embed the path <- updates on embedding progress
                 try:
                     loop = asyncio.get_event_loop()
+                    start_time = loop.time()
                     await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
+                    duration = round(loop.time() - start_time, 3)
                     await ws_manager.broadcast(json.dumps({
                         "type": "SYNC_PROGRESS",
                         "current_file": os.path.basename(path),
                         "progress": int((index + 1) / total_files * 100),
-                        "remaining": total_files - index - 1
+                        "remaining": total_files - index - 1,
+                        "duration_seconds": duration
                     }))
                 except Exception as e:
-                    #notify frontend of failed
                     await ws_manager.broadcast(json.dumps({
                         "type": "SYNC_ERROR",
                         "file": os.path.basename(path),
                         "error": str(e)
                     }))
-                
-                # pop from frontend queue
         
         except asyncio.CancelledError:
             return
