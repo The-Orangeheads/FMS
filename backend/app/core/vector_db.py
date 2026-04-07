@@ -2,6 +2,7 @@
 Vector Database Handler Module
 Handles Database modifications
 """
+import os
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -34,7 +35,7 @@ class ChromaDBImpl():
         metadata["path"] = file_path
         
         unique_id = str(uuid.uuid4())
-        print(f"Inserting: {[unique_id, file_path, metadata]}") #! FOR DEBUGGING, REMOVE LATER
+        # print(f"Inserting: {[unique_id, file_path, metadata]}") #! FOR DEBUGGING, REMOVE LATER
         
         self.collection.add(
             embeddings=[embedding], 
@@ -81,7 +82,7 @@ class ChromaDBImpl():
         return stored
         
     def delete(self, ids : list[str]):
-        print(f"Deleting: {ids}") #! FOR DEBUGGING, REMOVE LATER
+        # print(f"Deleting: {ids}") #! FOR DEBUGGING, REMOVE LATER
         if not ids:
             return
         self.collection.delete(ids=ids)

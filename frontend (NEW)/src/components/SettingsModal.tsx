@@ -11,8 +11,13 @@ const DOC_MODELS = [
   "text-embedding-3-large",
   "text-embedding-3-small",
   "nomic-embed",
+  "bge-m3",
 ];
-const IMG_MODELS = ["clip-vit-base", "siglip-so400m", "imagebind-hybrid"];
+const IMG_MODELS = ["clip-vit-base", "siglip2", "imagebind-hybrid"];
+
+const electron = (window as any).require
+  ? (window as any).require("electron")
+  : null;
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const titleId = useId();
@@ -40,19 +45,36 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }, [open]);
 
-  const handleAddDirectory = async (path: string) => {
-    await fetch("http://localhost:8000/api/directory/paths", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ path }),
-    });
-    fetch("http://localhost:8000/api/directory/paths")
-      .then((res) => res.json())
-      .then((data) => setDirs(data.dirs || []));
-  };
+  const handleAddDirectory = async () => {
+    if (!electron) return;
 
+    try {
+      // This calls the 'open-directory-picker' handler we added to main.js
+      const path = await electron.ipcRenderer.invoke("open-directory-picker");
+
+      if (path) {
+        // Send the absolute path to your FastAPI backend
+        const response = await fetch(
+          "http://localhost:8000/api/directory/paths",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path }),
+          },
+        );
+
+        if (response.ok) {
+          // Refresh the UI list
+          const data = await fetch(
+            "http://localhost:8000/api/directory/paths",
+          ).then((res) => res.json());
+          setDirs(data.dirs || []);
+        }
+      }
+    } catch (err) {
+      console.error("Electron IPC Error:", err);
+    }
+  };
   const handleRemoveDirectory = async (path: string) => {
     await fetch(`http://localhost:8000/api/directory/paths`, {
       method: "DELETE",
@@ -73,6 +95,26 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     );
     if (!ok) return;
     // Intentionally a no-op for now; backend wiring will be added later.
+  };
+
+  const handleSaveChanges = async () => {
+    await fetch("http://localhost:8000/api/config/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sync_interval: syncInterval,
+        top_k: topK,
+        chunk_strategy: chunkingStrategy,
+        chunk_size: chunkSize,
+        chunk_overlap: overlap,
+        batch_size: batch,
+        cur_text_embedding_model: docModel,
+        cur_image_embedding_model: imgModel,
+      }),
+    });
+    onClose();
   };
 
   return (
@@ -171,9 +213,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 Folders continuously scanned for new files to embed.
               </p>
               <ul className="mb-4 divide-y divide-border rounded-xl border border-border bg-surface-muted/50">
-                {dirs.map((path) => (
+                {/* Array.from(new Set(dirs)) ensures every path is unique */}
+                {Array.from(new Set(dirs)).map((path) => (
                   <li
-                    key={path}
+                    key={path} // Path is now guaranteed to be unique in this render
                     className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
                   >
                     <span className="min-w-0 truncate font-mono text-foreground">
@@ -195,7 +238,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </ul>
               <button
                 onClick={() => {
-                  handleAddDirectory;
+                  handleAddDirectory();
                 }}
                 type="button"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-primary/40 bg-primary/5 py-3 text-sm font-semibold text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
@@ -395,11 +438,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <button
             type="button"
             onClick={() => {
-              window.localStorage.setItem(
-                "shelf-sync-interval",
-                String(syncInterval),
-              );
-              onClose();
+              handleSaveChanges();
             }}
             className="rounded-full bg-primary px-8 py-2.5 text-sm font-semibold text-on-primary shadow-soft transition hover:bg-primary/90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >

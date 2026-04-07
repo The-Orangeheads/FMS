@@ -22,9 +22,9 @@ class FileHandler:
         self.pdf_handler = PDFTextHandler(settings.pdf_complexity_threshold)
         self.chunker = ChunkingService()
     
-    def process_document(self, path: str) -> List[Dict]:
+    def process_document(self, path: str, notify_cb=None) -> List[Dict]:
         logger.info(f"Processing text/document file: {path}")
-
+        
         target_model = (
             settings.DEFAULT_TEXT_EMBEDDING_MODEL
             if settings.cur_text_embedding_model == "auto"
@@ -32,7 +32,9 @@ class FileHandler:
         )
         
         # 1. Process and Chunk Text
-        print("extracting and chunking document")
+        if notify_cb:
+            notify_cb(f"Extracting text...: {os.path.basename(path)}")
+
         ext = Path(path).suffix.lower()
         extracted_pages = []
         
@@ -48,8 +50,9 @@ class FileHandler:
             pages=extracted_pages
         )
         
-
-        print("preprocessing chunk data")
+        if notify_cb:
+            notify_cb(f"Preprocessing chunks...: {os.path.basename(path)}")
+        
         # 2. Prepare Input for Text Model
         valid_chunks = []
         valid_inputs = []
@@ -67,12 +70,15 @@ class FileHandler:
             return {"status": "skipped", "message": "No meaningful text found in file."}
 
         # 3. Embed using ONLY the valid data
-        embedded_data = embedding_service.process_embeddings(target_model, valid_inputs)
+        embedded_data = embedding_service.process_embeddings(target_model, valid_inputs, notify_cb)
 
         stat = Path(path).stat()
 
         # 4. Store in DOCUMENTS
-        print("storing embeddings in DB")
+
+        if notify_cb:
+            notify_cb(f"Storing embeddings...: {os.path.basename(path)}")
+
         for idx, item in enumerate(embedded_data.results):
             # Use valid_raw_chunks instead of result_chunks to keep indices aligned
             text_content = valid_chunks[idx]['text']
@@ -88,9 +94,9 @@ class FileHandler:
                 }
             )
     
-    def process_image(self, path: str):
+    def process_image(self, path: str, notify_cb=None):
         logger.info(f"Processing image file: {path}")
-
+        
         target_model = (
             settings.DEFAULT_IMAGE_EMBEDDING_MODEL 
             if settings.cur_image_embedding_model == "auto" 
@@ -98,7 +104,10 @@ class FileHandler:
         )
         
         # 1. Read and Encode Image to Base64
-        print("encoding image")
+
+        if notify_cb:
+            notify_cb(f"Encoding image...: {os.path.basename(path)}")
+            
         with open(path, "rb") as f:
             image_bytes = f.read()
             image_b64 = base64.b64encode(image_bytes).decode('utf-8')
@@ -110,13 +119,19 @@ class FileHandler:
         )]
         
         # 3. Embed using the current images embedding model
-        print("embedding image")
-        embedded_data = embedding_service.process_embeddings(target_model, inputs)
+
+        if notify_cb:
+            notify_cb(f"Embedding image...: {os.path.basename(path)}")
+        
+        embedded_data = embedding_service.process_embeddings(target_model, inputs, notify_cb)
 
         stat = Path(path).stat()
         
         # 4. Store in IMAGES Collection (storage_filename used for display endpoint)
-        print("storing in DB")
+
+        if notify_cb:
+            notify_cb(f"Storing embedding...: {os.path.basename(path)}")
+        
         for idx, item in enumerate(embedded_data.results):
             vector_db_service.images_db_service.insert(
                 embedding=item.vector,
@@ -127,7 +142,7 @@ class FileHandler:
                 }
             )
     
-    def process_file(self, path):
+    def process_file(self, path, notify_cb=None):
         if settings.chunk_size <= settings.chunk_overlap:
             raise Exception("Chunk size cannot be less than or equal to the chunk overlap")
         
@@ -135,17 +150,17 @@ class FileHandler:
             # notify frontend
             raise Exception("File not found")
 
-        time_start = start = time.time()
+        time_start = time.time()
 
         mime_type, _ = mimetypes.guess_type(path)
         # IMAGE PROCESSING
         if mime_type.startswith("image/"):
-            self.process_image(path)
-            
+            self.process_image(path, notify_cb=notify_cb)
         # TEXT/DOCUMENT PROCESSING
         else:
-            self.process_document(path)
+            self.process_document(path, notify_cb=notify_cb)
 
         time_end = time.time()
-        print(f"finished with time ${time_end-time_start}")
         
+        if notify_cb:
+            notify_cb(f"Finished processing in {time_end-time_start} seconds: {os.path.basename(path)}")

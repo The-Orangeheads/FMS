@@ -6,6 +6,8 @@ import threading
 import asyncio
 from app.services.vector_db_service import *
 from app.services.file_handler_service import *
+from app.core.websockets import ws_manager
+
 
 class fileSync:
 
@@ -35,6 +37,8 @@ class fileSync:
         self.watch_dirs_lock = threading.RLock()
         self.syncing_thread : asyncio.Task | None = None
         self.thread_lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
     
     def add_dir(self, dir : str):
         try:
@@ -82,6 +86,15 @@ class fileSync:
                 ids_to_rem.extend(ids)
         
         return ids_to_rem
+    
+    def sync_notify(self,message_text):
+        asyncio.run_coroutine_threadsafe(
+            ws_manager.broadcast(json.dumps({
+                "type": "FILE_STATUS",
+                "message": message_text
+            })),
+            self._loop
+    )
 
     async def initiate_sync(self):
         try:
@@ -109,6 +122,7 @@ class fileSync:
     async def sync(self):
         """Syncs changes to files to DB"""
         try:
+            self._loop = asyncio.get_event_loop()
             print("reading file changes")
             cur_state = self.get_current_state()
             await asyncio.sleep(0)
@@ -136,18 +150,43 @@ class fileSync:
             
             #send queue to frontend and unlock sync button
             # websocket magic here
+            total_files = len(paths_to_add)
+            queue_data = [{"id": p, "name": os.path.basename(p)} for p in paths_to_add]
+            await ws_manager.broadcast(
+                json.dumps({
+                    "type": "START_SYNC",
+                    "status": "started",
+                    "total": total_files,
+                    "queue": queue_data,
+                    })
+                )
             print("embedding files")
-            for path in paths_to_add:
+            print(f"embedding files — queue size: {len(paths_to_add)}")  # add this
+            for index, path in enumerate(paths_to_add):
                 await asyncio.sleep(0)
                 # embed the path <- updates on embedding progress
                 try:
-                    file_handler.process_file(path)
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
+                    await ws_manager.broadcast(json.dumps({
+                        "type": "SYNC_PROGRESS",
+                        "current_file": os.path.basename(path),
+                        "progress": int((index + 1) / total_files * 100),
+                        "remaining": total_files - index - 1
+                    }))
                 except Exception as e:
                     #notify frontend of failed
-                    pass
+                    await ws_manager.broadcast(json.dumps({
+                        "type": "SYNC_ERROR",
+                        "file": os.path.basename(path),
+                        "error": str(e)
+                    }))
                 
                 # pop from frontend queue
         
         except asyncio.CancelledError:
             return
+        
+        await ws_manager.broadcast(json.dumps({"type": "SYNC_COMPLETE"}))
+
     

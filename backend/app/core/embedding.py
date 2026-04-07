@@ -7,6 +7,7 @@ from PIL import Image
 import io
 import math
 import base64
+import os
 
 from app.core.config import settings
 
@@ -23,7 +24,7 @@ things and output the same things
 """
 class EmbeddingModelInterface:
     """Base class to enforce a common structure for all model recipes."""
-    def embed(self, chunks: List[ChunkInput]) -> List[List[float]]:
+    def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
         raise NotImplementedError
 
 # --- RECIPE 1: Standard Sentence Transformers (Text Only) ---
@@ -44,7 +45,7 @@ class SBERTModel(EmbeddingModelInterface):
     and is expected to return a list of vectors, but as we know SBERT like models deal with text
     so that's why we extract the chunks' text into a variable called texts.
     """
-    def embed(self, chunks: List[ChunkInput]) -> List[List[float]]:
+    def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
         texts = [c.text if hasattr(c, 'text') else str(c) for c in chunks]
         if not texts:
             return []
@@ -72,7 +73,9 @@ class SBERTModel(EmbeddingModelInterface):
         sorted_embds = []
 
         #! notify frontend <----
-        print(f"embedding 0 out of ${total_batches}")
+        if notify_cb:
+            notify_cb(f"embedding 0 out of {total_batches}")
+
         for i in range(0, len(sorted_texts), batch_size):
             cur_batch = sorted_texts[i : i + batch_size]
             
@@ -85,9 +88,9 @@ class SBERTModel(EmbeddingModelInterface):
             sorted_embds.extend(batch_embeddings.cpu().tolist())
             
             #! notify frontend <----
-            print(f"embedding ${i + 1} out of ${total_batches}")
+            if notify_cb:
+                notify_cb(f"embedding {i + 1} out of {total_batches}")
             
-        
         # Restore the original batches order
         ordered_embds = [None] * len(texts)
         for sorted_pos, original_idx in enumerate(sorted_idxs):
@@ -139,7 +142,7 @@ class SiglipModel(EmbeddingModelInterface):
         raise TypeError(f"Unsupported SigLIP2 output type: {type(outputs)!r}")
 
     @torch.no_grad()
-    def embed(self, chunks: List[ChunkInput]) -> List[List[float]]:
+    def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
         embeddings: List[List[float]] = []
 
         for chunk in chunks:

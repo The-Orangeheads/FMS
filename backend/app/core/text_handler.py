@@ -2,6 +2,7 @@ import fitz
 import pdfplumber
 import pandas as pd
 from typing import List, Tuple, Optional, Dict
+import os
 
 class PDFTextHandler:
     def __init__(self, complexity_threshold: int = 10):
