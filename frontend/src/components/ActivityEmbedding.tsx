@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { IconFileText, IconRefresh } from "./icons";
 
 type Completed = { id: string; name: string; durationLabel: string };
@@ -37,7 +37,6 @@ const WS_URL = "ws://localhost:8000/ws";
 let sharedSocket: WebSocket | null = null;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 10;
-const messageSubscribers = new Set<(data: BackendMessage) => void>();
 type SharedEmbeddingState = {
   active: Active | null;
   queue: Queued[];
@@ -81,6 +80,144 @@ function broadcastUiState() {
   window.dispatchEvent(new CustomEvent(EMBEDDING_UI_UPDATED_EVENT, { detail: sharedState }));
 }
 
+function parseStatusMessage(message: string) {
+  const progressFormat = /^(.+?)\s*:\s*(.+?)\s*:\s*(\d{1,3})\s*$/i.exec(message);
+  if (progressFormat) {
+    const phaseText = progressFormat[1].trim();
+    const fileName = progressFormat[2].trim();
+    const percentage = Math.max(1, Math.min(100, Number(progressFormat[3])));
+    return { fileName, phaseText, percentage };
+  }
+
+  const parts = message.split(": ");
+  const fileName = parts.length > 1 ? parts[parts.length - 1].trim() : "";
+  const phaseRaw = parts[0]?.trim() ?? "";
+  const phaseText = phaseRaw.length > 0 ? phaseRaw : "Processing";
+  return { fileName, phaseText, percentage: undefined as number | undefined };
+}
+
+function appendEmbeddingHistoryEntry(currentFile: string, durationSeconds?: number) {
+  const prev = readHistoryFromStorage();
+  const updated = [
+    {
+      id: Date.now().toString(),
+      name: currentFile,
+      durationLabel: formatDurationLabel(durationSeconds),
+    },
+    ...prev,
+  ].slice(0, 50);
+  writeHistoryToStorage(updated);
+}
+
+/** Single handler so multiple ActivityEmbedding mounts do not double-count progress. */
+function applyEmbeddingWsMessage(data: BackendMessage) {
+  switch (data.type) {
+    case "START_SYNC":
+      sharedState = {
+        ...sharedState,
+        error: null,
+        resyncing: false,
+        queue: data.queue,
+        totalFiles: data.total,
+        completedFiles: 0,
+        currentFileFraction: 0,
+        active: null,
+      };
+      broadcastUiState();
+      break;
+
+    case "FILE_STATUS": {
+      const parsed = parseStatusMessage(data.message);
+      let fraction = sharedState.currentFileFraction;
+      if (typeof parsed.percentage === "number") {
+        fraction = parsed.percentage / 100;
+      }
+      const currentFileProgress =
+        typeof parsed.percentage === "number"
+          ? parsed.percentage
+          : Math.max(0, Math.min(100, Math.round(fraction * 100)));
+      const activeName =
+        parsed.fileName ||
+        sharedState.active?.name ||
+        sharedState.queue[0]?.name ||
+        "";
+      if (!activeName) break;
+
+      const nextActive: Active = {
+        id: "active-job",
+        name: activeName,
+        phase: "embedding",
+        progress: currentFileProgress,
+        detailText: parsed.phaseText,
+        completedFiles: sharedState.completedFiles,
+        totalFiles: sharedState.totalFiles,
+      };
+      sharedState = {
+        ...sharedState,
+        active: nextActive,
+        currentFileFraction: fraction,
+      };
+      broadcastUiState();
+      break;
+    }
+
+    case "SYNC_PROGRESS": {
+      const total = sharedState.totalFiles;
+      let completed = sharedState.completedFiles + 1;
+      if (total > 0) {
+        completed = Math.min(completed, total);
+      }
+      const completedActive: Active = {
+        id: "active-job",
+        name: data.current_file,
+        phase: "embedding",
+        progress: 100,
+        detailText: "Embedding complete",
+        completedFiles: completed,
+        totalFiles: total,
+      };
+      const baseQueue = sharedState.queue.length > 0 ? sharedState.queue.slice(1) : [];
+      const nextQueue =
+        data.remaining <= 0 ? [] : baseQueue.slice(0, Math.max(data.remaining, 0));
+      sharedState = {
+        ...sharedState,
+        active: completedActive,
+        queue: nextQueue,
+        completedFiles: completed,
+        totalFiles: total,
+        currentFileFraction: 0,
+      };
+      broadcastUiState();
+      if (data.current_file) {
+        appendEmbeddingHistoryEntry(data.current_file, data.duration_seconds);
+      }
+      break;
+    }
+
+    case "SYNC_COMPLETE":
+      sharedState = {
+        ...sharedState,
+        active: null,
+        resyncing: false,
+        queue: [],
+        totalFiles: 0,
+        completedFiles: 0,
+        currentFileFraction: 0,
+      };
+      broadcastUiState();
+      break;
+
+    case "SYNC_ERROR":
+      sharedState = {
+        ...sharedState,
+        error: `Error processing ${data.file}: ${data.error}`,
+        resyncing: false,
+      };
+      broadcastUiState();
+      break;
+  }
+}
+
 function formatDurationLabel(durationSeconds?: number): string {
   if (typeof durationSeconds !== "number" || Number.isNaN(durationSeconds)) {
     return "Embedded";
@@ -103,7 +240,7 @@ function ensureSharedSocketConnection() {
   sharedSocket.onmessage = (event) => {
     try {
       const data: BackendMessage = JSON.parse(event.data);
-      messageSubscribers.forEach((subscriber) => subscriber(data));
+      applyEmbeddingWsMessage(data);
     } catch (err) {
       console.error("Error parsing WebSocket message:", err);
     }
@@ -134,173 +271,24 @@ export function ActivityEmbedding({
   const [history, setHistory] = useState<Completed[]>(() => readHistoryFromStorage());
   const [resyncing, setResyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const totalFilesRef = useRef(0);
-  const completedFilesRef = useRef(0);
-  const currentFileFractionRef = useRef(0);
-
-  const parseStatusMessage = useCallback((message: string) => {
-    const progressFormat = /^(.+?)\s*:\s*(.+?)\s*:\s*(\d{1,3})\s*$/i.exec(message);
-    if (progressFormat) {
-      const phaseText = progressFormat[1].trim();
-      const fileName = progressFormat[2].trim();
-      const percentage = Math.max(1, Math.min(100, Number(progressFormat[3])));
-      return { fileName, phaseText, percentage };
-    }
-
-    const parts = message.split(": ");
-    const fileName = parts.length > 1 ? parts[parts.length - 1].trim() : "";
-    const phaseRaw = parts[0]?.trim() ?? "";
-    const phaseText = phaseRaw.length > 0 ? phaseRaw : "Processing";
-    return { fileName, phaseText, percentage: undefined as number | undefined };
-  }, []);
+  const [embeddingMeta, setEmbeddingMeta] = useState({
+    totalFiles: sharedState.totalFiles,
+    completedFiles: sharedState.completedFiles,
+    currentFileFraction: sharedState.currentFileFraction,
+  });
 
   useEffect(() => {
-    // Hydrate instantly from shared in-memory state so full view appears immediately.
     setActive(sharedState.active);
     setQueue(sharedState.queue);
     setError(sharedState.error);
     setResyncing(sharedState.resyncing);
-    totalFilesRef.current = sharedState.totalFiles;
-    completedFilesRef.current = sharedState.completedFiles;
-    currentFileFractionRef.current = sharedState.currentFileFraction;
-
-    const subscriber = (data: BackendMessage) => {
-      switch (data.type) {
-        case "START_SYNC":
-          setError(null);
-          setResyncing(false);
-          setQueue(data.queue);
-          totalFilesRef.current = data.total;
-          completedFilesRef.current = 0;
-          currentFileFractionRef.current = 0;
-          setActive(null);
-          sharedState = {
-            ...sharedState,
-            error: null,
-            resyncing: false,
-            queue: data.queue,
-            totalFiles: data.total,
-            completedFiles: 0,
-            currentFileFraction: 0,
-            active: null,
-          };
-          broadcastUiState();
-          break;
-
-        case "FILE_STATUS": {
-          const parsed = parseStatusMessage(data.message);
-          if (typeof parsed.percentage === "number") {
-            currentFileFractionRef.current = parsed.percentage / 100;
-          }
-          const currentFileProgress =
-            typeof parsed.percentage === "number"
-              ? parsed.percentage
-              : Math.max(0, Math.min(100, Math.round(currentFileFractionRef.current * 100)));
-          const activeName = parsed.fileName || active?.name || queue[0]?.name || "";
-          if (!activeName) break;
-          const isEmbeddingStep = true;
-
-          const nextActive: Active = {
-            id: "active-job",
-            name: activeName,
-            phase: isEmbeddingStep ? "embedding" : "preprocessing",
-            progress: currentFileProgress,
-            detailText: parsed.phaseText,
-            completedFiles: completedFilesRef.current,
-            totalFiles: totalFilesRef.current,
-          };
-          setActive(nextActive);
-          sharedState = {
-            ...sharedState,
-            active: nextActive,
-            completedFiles: completedFilesRef.current,
-            totalFiles: totalFilesRef.current,
-            currentFileFraction: currentFileFractionRef.current,
-          };
-          broadcastUiState();
-          break;
-        }
-
-        case "SYNC_PROGRESS":
-          completedFilesRef.current += 1;
-          currentFileFractionRef.current = 0;
-          const completedActive: Active = {
-            id: "active-job",
-            name: data.current_file,
-            phase: "embedding",
-            progress: 100,
-            detailText: "Embedding complete",
-            completedFiles: completedFilesRef.current,
-            totalFiles: totalFilesRef.current,
-          };
-          setActive(completedActive);
-          const baseQueue = sharedState.queue.length > 0 ? sharedState.queue.slice(1) : [];
-          const nextQueue =
-            data.remaining <= 0 ? [] : baseQueue.slice(0, Math.max(data.remaining, 0));
-          setQueue(nextQueue);
-          sharedState = {
-            ...sharedState,
-            active: completedActive,
-            queue: nextQueue,
-            completedFiles: completedFilesRef.current,
-            totalFiles: totalFilesRef.current,
-            currentFileFraction: 0,
-          };
-          broadcastUiState();
-          if (data.current_file) {
-            setHistory((prev) => {
-              const updated = [
-                {
-                  id: Date.now().toString(),
-                  name: data.current_file,
-                  durationLabel: formatDurationLabel(data.duration_seconds),
-                },
-                ...prev,
-              ].slice(0, 50);
-              writeHistoryToStorage(updated);
-              return updated;
-            });
-          }
-          break;
-
-        case "SYNC_COMPLETE":
-          setActive(null);
-          setResyncing(false);
-          setQueue([]);
-          totalFilesRef.current = 0;
-          completedFilesRef.current = 0;
-          currentFileFractionRef.current = 0;
-          sharedState = {
-            ...sharedState,
-            active: null,
-            resyncing: false,
-            queue: [],
-            totalFiles: 0,
-            completedFiles: 0,
-            currentFileFraction: 0,
-          };
-          broadcastUiState();
-          break;
-
-        case "SYNC_ERROR":
-          setError(`Error processing ${data.file}: ${data.error}`);
-          setResyncing(false);
-          sharedState = {
-            ...sharedState,
-            error: `Error processing ${data.file}: ${data.error}`,
-            resyncing: false,
-          };
-          broadcastUiState();
-          break;
-      }
-    };
-
-    messageSubscribers.add(subscriber);
+    setEmbeddingMeta({
+      totalFiles: sharedState.totalFiles,
+      completedFiles: sharedState.completedFiles,
+      currentFileFraction: sharedState.currentFileFraction,
+    });
     ensureSharedSocketConnection();
-    return () => {
-      messageSubscribers.delete(subscriber);
-    };
-  }, [parseStatusMessage]);
+  }, []);
 
   useEffect(() => {
     const onUiUpdated = (event: Event) => {
@@ -311,9 +299,11 @@ export function ActivityEmbedding({
       setQueue(next.queue);
       setError(next.error);
       setResyncing(next.resyncing);
-      totalFilesRef.current = next.totalFiles;
-      completedFilesRef.current = next.completedFiles;
-      currentFileFractionRef.current = next.currentFileFraction;
+      setEmbeddingMeta({
+        totalFiles: next.totalFiles,
+        completedFiles: next.completedFiles,
+        currentFileFraction: next.currentFileFraction,
+      });
     };
     window.addEventListener(EMBEDDING_UI_UPDATED_EVENT, onUiUpdated as EventListener);
     const onHistoryUpdated = (event: Event) => {
@@ -404,20 +394,20 @@ export function ActivityEmbedding({
       )
     : 0;
   const hasSidebarActivity = Boolean(active) || queueWithoutActive.length > 0 || history.length > 0;
-  const totalQueueFiles = active?.totalFiles ?? totalFilesRef.current;
-  const completedQueueFiles = active?.completedFiles ?? completedFilesRef.current;
-  const currentQueueFraction = active
-    ? Math.max(0, Math.min(1, active.progress / 100))
-    : Math.max(0, Math.min(1, currentFileFractionRef.current));
-  const totalQueueProgress = totalQueueFiles > 0
-    ? Math.max(
-        0,
-        Math.min(
+  const totalQueueFiles = embeddingMeta.totalFiles;
+  const completedQueueFiles =
+    totalQueueFiles > 0
+      ? Math.min(embeddingMeta.completedFiles, totalQueueFiles)
+      : embeddingMeta.completedFiles;
+  const inFlightFraction =
+    active && active.progress < 100 ? Math.max(0, Math.min(1, active.progress / 100)) : 0;
+  const totalQueueProgress =
+    totalQueueFiles > 0
+      ? Math.min(
           100,
-          Math.round(((completedQueueFiles + currentQueueFraction) / totalQueueFiles) * 100)
+          Math.round(((completedQueueFiles + inFlightFraction) / totalQueueFiles) * 100)
         )
-      )
-    : 0;
+      : 0;
 
   const Wrapper = showFull
     ? ({ children }: { children: React.ReactNode }) => <>{children}</>
@@ -454,7 +444,7 @@ export function ActivityEmbedding({
       {!showFull && (
         <p className="mb-4 text-xs leading-relaxed text-foreground-muted">
           {active && active.totalFiles > 0
-            ? `Queue progress: ${active.completedFiles}/${active.totalFiles} files`
+            ? `Queue progress: ${Math.min(active.completedFiles, active.totalFiles)}/${active.totalFiles} files`
             : resyncing
               ? "Syncing with indexer…"
               : "Files processed for AI embeddings."}
@@ -637,7 +627,7 @@ export function ActivityEmbedding({
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-foreground">Embedding history</p>
-                  <p className="text-xs text-foreground-muted">Saved locally in your browser.</p>
+                  <p className="text-xs text-foreground-muted">History of recently processed items.</p>
                 </div>
                 <button
                   type="button"
