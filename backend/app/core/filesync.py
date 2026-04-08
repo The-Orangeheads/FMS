@@ -64,7 +64,7 @@ class fileSync:
         self.syncing_thread : asyncio.Task | None = None
         self.thread_lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
-
+        self.cancel_queue = False
     
     def add_dir(self, dir : str):
         try:
@@ -139,6 +139,11 @@ class fileSync:
             })),
             self._loop
     )
+        
+    async def check_cancel(self):
+        await asyncio.sleep(0)
+        if self.cancel_queue:
+            raise asyncio.CancelledError()
 
     async def initiate_sync(self):
         try:
@@ -147,18 +152,18 @@ class fileSync:
             return
         
         try:
+            self.cancel_queue = True
+
             if self.syncing_thread is not None:
-                if not self.syncing_thread.done():
-                    # sent waiting for old queue cancelling to frontend
-                    self.syncing_thread.cancel()
-                    
                 try:
                     await self.syncing_thread
                 except asyncio.CancelledError:
                     pass
-                
-            # sent resyncing files to frontend
+
+            self.cancel_queue = False
+
             self.syncing_thread = asyncio.create_task(self.sync())
+        
         finally:
             self.thread_lock.release()
     
@@ -179,25 +184,25 @@ class fileSync:
 
             [cur_state, file_data, analytics["other"][1], analytics["other"][3]] = self.get_current_state()
             
-            await asyncio.sleep(0)
+            await self.check_cancel()
 
             stored_images = images_db_service.get_state()
-            await asyncio.sleep(0)
+            await self.check_cancel()
 
             stored_docs = documents_db_service.get_state()
-            await asyncio.sleep(0)
+            await self.check_cancel()
 
             print("deleting outdated embeddings")
             images_db_service.delete(self.get_outdated(cur_state, stored_images))
-            await asyncio.sleep(0)
+            await self.check_cancel()
 
             documents_db_service.delete(self.get_outdated(cur_state, stored_docs))
-            await asyncio.sleep(0)
+            await self.check_cancel()
 
             print("initializing queue")
             paths_to_add = []
             for path, key in cur_state.items():
-                await asyncio.sleep(0)
+                await self.check_cancel()
 
                 [file_type, fsize] = file_data[path]
                 category = analytics[file_type]
@@ -227,7 +232,7 @@ class fileSync:
                 )
             
             for index, path in enumerate(paths_to_add):
-                await asyncio.sleep(0)
+                await self.check_cancel()
 
                 #! TIME BOMB PREVENTION SQUAD: uncomment if you don't have models
                 # print(f"Processing: {path}")
