@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type MouseEvent, memo } from "react";
 import { IconFileText, IconRefresh } from "./icons";
 
 type Completed = { id: string; name: string; durationLabel: string };
@@ -269,6 +269,27 @@ function ensureSharedSocketConnection() {
   };
 }
 
+interface SyncButtonProps {
+  resyncing: boolean;
+  onSync: (event: MouseEvent<HTMLButtonElement>) => void;
+}
+
+const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonProps) {
+  return (
+    <button
+      type="button"
+      onMouseDown={onSync}
+      onClick={(event) => event.preventDefault()}
+      disabled={resyncing}
+      title="Resync embedding queue"
+      aria-label="Resync embedding files"
+      className="rounded-full p-2 text-foreground-muted hover:bg-surface-muted hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <IconRefresh className={`h-4 w-4 ${resyncing ? "animate-spin" : ""}`} />
+    </button>
+  );
+});
+
 export function ActivityEmbedding({
   onViewAll,
   showFull,
@@ -448,17 +469,7 @@ export function ActivityEmbedding({
           >
             Activity &amp; embedding
           </h2>
-          <button
-            type="button"
-            onMouseDown={handleSyncMouseDown}
-            onClick={(event) => event.preventDefault()}
-            disabled={resyncing}
-            title="Resync embedding queue"
-            aria-label="Resync embedding files"
-            className="rounded-full p-2 text-foreground-muted hover:bg-surface-muted hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <IconRefresh className={`h-4 w-4 ${resyncing ? "animate-spin" : ""}`} />
-          </button>
+          <SyncButton resyncing={resyncing} onSync={handleSyncMouseDown} />
         </div>
       )}
 
@@ -573,17 +584,7 @@ export function ActivityEmbedding({
                     Queue progress: {completedQueueFiles}/{totalQueueFiles || 0} files ({totalQueueProgress}%)
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onMouseDown={handleSyncMouseDown}
-                  onClick={(event) => event.preventDefault()}
-                  disabled={resyncing}
-                  title="Resync embedding queue"
-                  aria-label="Resync embedding files"
-                  className="rounded-full p-2 text-foreground-muted hover:bg-surface-muted hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <IconRefresh className={`h-4 w-4 ${resyncing ? "animate-spin" : ""}`} />
-                </button>
+                <SyncButton resyncing={resyncing} onSync={handleSyncMouseDown} />
               </div>
               <div
                 className="mb-4 h-2 w-full overflow-hidden rounded-full bg-surface-muted"
