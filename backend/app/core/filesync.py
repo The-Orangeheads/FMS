@@ -173,10 +173,10 @@ class fileSync:
             self._loop = asyncio.get_event_loop()
             print("reading file changes")
             analytics : dict[str, list[int]] = {
-                "image": [0, 0, 0, 0],
-                "audio": [0, 0, 0, 0],
+                "image":    [0, 0, 0, 0],
+                "audio":    [0, 0, 0, 0],
                 "document": [0, 0, 0, 0],
-                "other": [0, 0, 0, 0]
+                "other":    [0, 0, 0, 0]
             }
             """
                 file_data["category/type"] = [done, total, done_size, total_size]
@@ -242,9 +242,9 @@ class fileSync:
                     start_time = loop.time()
 
                     #! TIME BOMB PREVENTION SQUAD: uncommnet, uncommen, comment (next 3 lines) if you don't have models
-                    print(f"Processing: {path}")
-                    await asyncio.sleep(2)
-                    # await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
+                    # print(f"Processing: {path}")
+                    # await asyncio.sleep(2)
+                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
 
                     duration = round(loop.time() - start_time, 3)
 

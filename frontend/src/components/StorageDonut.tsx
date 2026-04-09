@@ -14,7 +14,20 @@ type AnalyticsData = {
   [category: string]: [entries_done: number, total_entries: number, size_done: number, total_size: number]
 }
 
-const DEFAULT_SEGMENTS: StorageSegment[] = []
+const DEFAULT_ANALYTICS: AnalyticsData = {
+  document: [0, 0, 0, 0],
+  image: [0, 0, 0, 0],
+  audio: [0, 0, 0, 0],
+  other: [0, 0, 0, 0],
+}
+
+const CATEGORY_ORDER = ['document', 'image', 'audio', 'other']
+const CATEGORY_LABELS: { [key: string]: string } = {
+  document: 'Documents',
+  image: 'Images',
+  audio: 'Audio',
+  other: 'Others',
+}
 
 function mapAnalyticsToSegments(analytics: AnalyticsData): StorageSegment[] {
   // Map backend category names to StorageSegment keys
@@ -25,9 +38,11 @@ function mapAnalyticsToSegments(analytics: AnalyticsData): StorageSegment[] {
     other: 'others',
   }
 
+  // Merge with defaults to ensure all categories exist
+  const mergedAnalytics = { ...DEFAULT_ANALYTICS, ...analytics }
+
   // Calculate total size
-  const totalSize = Object.values(analytics).reduce((sum, [, , , size]) => sum + size, 0)
-  if (totalSize === 0) return DEFAULT_SEGMENTS
+  const totalSize = Object.values(mergedAnalytics).reduce((sum, [, , , size]) => sum + size, 0)
 
   const segments: StorageSegment[] = []
   const colors: { [key: string]: { color: string; faded: string; embedded?: string } } = {
@@ -37,14 +52,16 @@ function mapAnalyticsToSegments(analytics: AnalyticsData): StorageSegment[] {
     others: { color: '#a78bfa', faded: '#a78bfa' },
   }
 
-  Object.entries(analytics).forEach(([category, [done, total, , size]]) => {
-    const segmentKey = categoryMap[category] || 'others'
-    const pct = totalSize > 0 ? (size / totalSize) * 100 : 0
+  // Process in the correct order
+  CATEGORY_ORDER.forEach((backendCategory) => {
+    const [done, total, , totalSize_val] = mergedAnalytics[backendCategory] || [0, 0, 0, 0]
+    const segmentKey = categoryMap[backendCategory] || 'others'
+    const pct = totalSize > 0 ? (totalSize_val / totalSize) * 100 : 0
     const colorScheme = colors[segmentKey]
 
     segments.push({
       key: segmentKey,
-      label: DEFAULT_SEGMENTS.find(s => s.key === segmentKey)?.label || category,
+      label: CATEGORY_LABELS[backendCategory] || backendCategory,
       pct,
       color: colorScheme.color,
       fadedColor: colorScheme.faded,
@@ -55,7 +72,7 @@ function mapAnalyticsToSegments(analytics: AnalyticsData): StorageSegment[] {
     })
   })
 
-  return segments.length > 0 ? segments : DEFAULT_SEGMENTS
+  return segments
 }
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
@@ -95,15 +112,17 @@ type StorageDonutProps = {
 }
 
 export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
-  const SEGMENTS = analytics ? mapAnalyticsToSegments(analytics) : DEFAULT_SEGMENTS
+  const analyticsData = analytics || DEFAULT_ANALYTICS
+  const SEGMENTS = mapAnalyticsToSegments(analyticsData)
   const cx = 64
   const cy = 64
   const rOuter = 52
   const rInner = 34
   let angle = 0
 
-  // Check if we have data
-  const hasData = SEGMENTS.length > 0
+  // Check if we have data (total size > 0)
+  const totalSize = Object.values(analyticsData).reduce((sum, [, , , size]) => sum + size, 0)
+  const hasData = totalSize > 0
 
   const embeddableSegments = SEGMENTS.filter((segment) => segment.supportsEmbedding)
   const totalFiles = embeddableSegments.reduce((sum, segment) => sum + segment.count, 0)
@@ -237,33 +256,29 @@ export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
         </div>
       </div>
 
-      {!hasData ? (
-        <p className="text-center text-sm text-foreground-muted">No storage data available</p>
-      ) : (
-        <ul className="space-y-2 text-sm">
-          {segmentsWithAngles.map((segment) => (
-            <li key={segment.key} className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                  style={{ background: segment.color }}
-                />
-                <span className="min-w-0">
-                  <span className="block text-foreground font-semibold">{segment.label}</span>
-                  <span className="text-[0.75rem] text-foreground-muted">
-                    {segment.supportsEmbedding ? (
-                      <>{segment.embeddedCount}/{segment.count} items</>
-                    ) : (
-                      <>{segment.count} items</>
-                    )}
-                  </span>
+      <ul className="space-y-2 text-sm">
+        {segmentsWithAngles.map((segment) => (
+          <li key={segment.key} className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ background: segment.color }}
+              />
+              <span className="min-w-0">
+                <span className="block text-foreground font-semibold">{segment.label}</span>
+                <span className="text-[0.75rem] text-foreground-muted">
+                  {segment.supportsEmbedding ? (
+                    <>{segment.embeddedCount}/{segment.count} items</>
+                  ) : (
+                    <>{segment.count} items</>
+                  )}
                 </span>
               </span>
-              <span className="font-medium tabular-nums text-foreground">{formatPercentage(segment.pct)}%</span>
-            </li>
-          ))}
-        </ul>
-      )}
+            </span>
+            <span className="font-medium tabular-nums text-foreground">{formatPercentage(segment.pct)}%</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
