@@ -29,8 +29,7 @@ type BackendMessage =
       progress: number;
       remaining: number;
       duration_seconds?: number;
-      file_type: string;
-      file_size: number;
+      analytics?: { [key: string]: number[] };
     }
   | { type: "FILE_STATUS"; message: string }
   | { type: "SYNC_ERROR"; file: string; error: string }
@@ -196,6 +195,7 @@ function applyEmbeddingWsMessage(data: BackendMessage) {
         completedFiles: completed,
         totalFiles: total,
         currentFileFraction: 0,
+        analytics: data.analytics ?? sharedState.analytics,
       };
       broadcastUiState();
       if (data.current_file) {
