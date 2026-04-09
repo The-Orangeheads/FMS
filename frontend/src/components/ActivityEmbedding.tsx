@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent, memo } from "react";
+import { useCallback, useEffect, useState, useRef, useLayoutEffect, type MouseEvent, memo } from "react";
 import { IconFileText } from "./icons";
 
 type Completed = { id: string; name: string; durationLabel: string };
@@ -275,6 +275,19 @@ interface SyncButtonProps {
 }
 
 const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // Use useLayoutEffect to update animation state without triggering re-renders
+  useLayoutEffect(() => {
+    if (svgRef.current) {
+      if (resyncing) {
+        svgRef.current.style.animation = 'spin 1s linear infinite';
+      } else {
+        svgRef.current.style.animation = 'none';
+      }
+    }
+  }, [resyncing]);
+
   return (
     <button
       type="button"
@@ -292,6 +305,7 @@ const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonPro
       }}
     >
       <svg
+        ref={svgRef}
         className="h-4 w-4 flex-shrink-0"
         viewBox="0 0 24 24"
         fill="none"
@@ -299,7 +313,6 @@ const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonPro
         strokeLinecap="round"
         strokeLinejoin="round"
         style={{
-          animation: resyncing ? 'spin 1s linear infinite' : 'none',
           transformOrigin: '50% 50%',
           transformBox: 'fill-box',
           willChange: 'transform',
