@@ -50,6 +50,8 @@ def text_query(chunk_input):
             "metadata": hit.get("metadata", {}),
         })
     
+    embedding_service._get_model(text_model).free_vram()
+
     return results
 
 def image_query(chunk_input, score_correction : bool):
@@ -81,6 +83,7 @@ def image_query(chunk_input, score_correction : bool):
             "metadata": meta
         })
     
+    embedding_service._get_model(image_model).free_vram()
     return results
 
 @router.post("/unified/query")

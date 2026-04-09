@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     include_metadata: bool = True
     pdf_complexity_threshold: int = 15
     auto_sync_interval_seconds : float = 60
+    keep_models_in_memory: bool = True
 
     class Config:
         """Pydantic config."""
