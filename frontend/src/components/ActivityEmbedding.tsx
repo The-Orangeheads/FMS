@@ -124,7 +124,6 @@ function applyEmbeddingWsMessage(data: BackendMessage) {
       sharedState = {
         ...sharedState,
         error: null,
-        resyncing: false,
         queue: data.queue,
         totalFiles: data.total,
         completedFiles: 0,
