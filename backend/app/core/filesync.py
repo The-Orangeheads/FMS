@@ -242,9 +242,9 @@ class fileSync:
                     start_time = loop.time()
 
                     #! TIME BOMB PREVENTION SQUAD: uncommnet, uncommen, comment (next 3 lines) if you don't have models
-                    # print(f"Processing: {path}")
-                    # await asyncio.sleep(5)
-                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
+                    print(f"Processing: {path}")
+                    await asyncio.sleep(2)
+                    # await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
 
                     duration = round(loop.time() - start_time, 3)
 

@@ -102,6 +102,9 @@ export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
   const rInner = 34
   let angle = 0
 
+  // Check if we have data
+  const hasData = SEGMENTS.length > 0
+
   const embeddableSegments = SEGMENTS.filter((segment) => segment.supportsEmbedding)
   const totalFiles = embeddableSegments.reduce((sum, segment) => sum + segment.count, 0)
   const totalEmbedded = embeddableSegments.reduce((sum, segment) => sum + (segment.embeddedCount ?? 0), 0)
@@ -122,6 +125,7 @@ export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
       end,
       embeddedEnd,
       embeddedProgress,
+      isFullCircle: Math.abs(sweep - 360) < 0.1, // Check if this segment takes up full circle
     }
   })
 
@@ -135,24 +139,81 @@ export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
           aria-label={`Storage statistics: ${usedTotalLabel} used across categories`}
         >
           <title>Storage breakdown by category</title>
-          {segmentsWithAngles.map((segment) => (
-            <path
-              key={segment.key}
-              d={donutArc(cx, cy, rOuter, rInner, segment.start, segment.end)}
-              fill={segment.supportsEmbedding ? segment.fadedColor : segment.color}
-            />
-          ))}
-          {segmentsWithAngles.map(
-            (segment) =>
-              segment.supportsEmbedding &&
-              segment.embeddedProgress > 0 && (
-                <path
-                  key={`${segment.key}-embedded`}
-                  d={donutArc(cx, cy, rOuter, rInner, segment.start, segment.embeddedEnd)}
-                  fill={segment.embeddedColor}
-                />
-              ),
+          {!hasData && (
+            // Empty state: full gray donut
+            <>
+              <path
+                d={donutArc(cx, cy, rOuter, rInner, 0, 359.9)}
+                fill="#d1d5db"
+              />
+            </>
           )}
+          {hasData &&
+            segmentsWithAngles.map((segment) => {
+              // For full circle segments, draw two arcs to avoid SVG degenerate case
+              if (segment.isFullCircle) {
+                return (
+                  <g key={segment.key}>
+                    <path
+                      d={donutArc(cx, cy, rOuter, rInner, 0, 179.9)}
+                      fill={segment.supportsEmbedding ? segment.fadedColor : segment.color}
+                    />
+                    <path
+                      d={donutArc(cx, cy, rOuter, rInner, 180, 359.9)}
+                      fill={segment.supportsEmbedding ? segment.fadedColor : segment.color}
+                    />
+                  </g>
+                )
+              }
+              return (
+                <path
+                  key={segment.key}
+                  d={donutArc(cx, cy, rOuter, rInner, segment.start, segment.end)}
+                  fill={segment.supportsEmbedding ? segment.fadedColor : segment.color}
+                />
+              )
+            })}
+          {hasData &&
+            segmentsWithAngles.map((segment) => {
+              if (
+                segment.supportsEmbedding &&
+                segment.embeddedProgress > 0
+              ) {
+                // For full circle segments, draw two arcs
+                if (segment.isFullCircle) {
+                  const progressEnd = 359.9 * segment.embeddedProgress
+                  return (
+                    <g key={`${segment.key}-embedded`}>
+                      {progressEnd > 180 ? (
+                        <>
+                          <path
+                            d={donutArc(cx, cy, rOuter, rInner, 0, 179.9)}
+                            fill={segment.embeddedColor}
+                          />
+                          <path
+                            d={donutArc(cx, cy, rOuter, rInner, 180, progressEnd)}
+                            fill={segment.embeddedColor}
+                          />
+                        </>
+                      ) : (
+                        <path
+                          d={donutArc(cx, cy, rOuter, rInner, 0, progressEnd)}
+                          fill={segment.embeddedColor}
+                        />
+                      )}
+                    </g>
+                  )
+                }
+                return (
+                  <path
+                    key={`${segment.key}-embedded`}
+                    d={donutArc(cx, cy, rOuter, rInner, segment.start, segment.embeddedEnd)}
+                    fill={segment.embeddedColor}
+                  />
+                )
+              }
+              return null
+            })}
           <circle cx={cx} cy={cy} r={rInner - 1} className="fill-surface-elevated" />
         </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
@@ -176,29 +237,33 @@ export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
         </div>
       </div>
 
-      <ul className="space-y-2 text-sm">
-        {segmentsWithAngles.map((segment) => (
-          <li key={segment.key} className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                style={{ background: segment.color }}
-              />
-              <span className="min-w-0">
-                <span className="block text-foreground font-semibold">{segment.label}</span>
-                <span className="text-[0.75rem] text-foreground-muted">
-                  {segment.supportsEmbedding ? (
-                    <>{segment.embeddedCount}/{segment.count} items</>
-                  ) : (
-                    <>{segment.count} items</>
-                  )}
+      {!hasData ? (
+        <p className="text-center text-sm text-foreground-muted">No storage data available</p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {segmentsWithAngles.map((segment) => (
+            <li key={segment.key} className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                  style={{ background: segment.color }}
+                />
+                <span className="min-w-0">
+                  <span className="block text-foreground font-semibold">{segment.label}</span>
+                  <span className="text-[0.75rem] text-foreground-muted">
+                    {segment.supportsEmbedding ? (
+                      <>{segment.embeddedCount}/{segment.count} items</>
+                    ) : (
+                      <>{segment.count} items</>
+                    )}
+                  </span>
                 </span>
               </span>
-            </span>
-            <span className="font-medium tabular-nums text-foreground">{formatPercentage(segment.pct)}%</span>
-          </li>
-        ))}
-      </ul>
+              <span className="font-medium tabular-nums text-foreground">{formatPercentage(segment.pct)}%</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
