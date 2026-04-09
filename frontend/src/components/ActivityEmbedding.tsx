@@ -288,6 +288,9 @@ const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonPro
       <IconRefresh className={`h-4 w-4 ${resyncing ? "animate-spin" : ""}`} />
     </button>
   );
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if resyncing actually changed
+  return prevProps.resyncing === nextProps.resyncing && prevProps.onSync === nextProps.onSync;
 });
 
 export function ActivityEmbedding({
@@ -390,7 +393,7 @@ export function ActivityEmbedding({
       if (resyncing) return;
       void handleSync();
     },
-    [handleSync, resyncing]
+    [handleSync]
   );
 
   const handleViewAllMouseDown = useCallback(
