@@ -19,7 +19,7 @@ class FileHandler:
     SUPPORTED_DOC_FORMATS = {".pdf", ".txt"}
     
     def __init__(self):
-        self.pdf_handler = PDFTextHandler(settings.pdf_complexity_threshold)
+        self.pdf_handler = PDFTextHandler()
         self.chunker = ChunkingService()
 
         self.last_type : str | None = None

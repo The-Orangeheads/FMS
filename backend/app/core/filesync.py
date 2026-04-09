@@ -55,7 +55,7 @@ class fileSync:
                 await self.safe_wait(await self.get_current_sync_thread())
 
                 elapsed = asyncio.get_event_loop().time() - start
-                await asyncio.sleep(max(0, settings.auto_sync_interval_seconds - elapsed))
+                await asyncio.sleep(max(0, settings.sync_interval*60 - elapsed))
         except asyncio.CancelledError:
             pass
     def __init__(self):

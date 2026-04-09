@@ -8,12 +8,13 @@ type SettingsModalProps = {
 };
 
 const DOC_MODELS = [
-  "text-embedding-3-large",
-  "text-embedding-3-small",
-  "nomic-embed",
-  "bge-m3",
+  "auto",
+  "bge-m3"
 ];
-const IMG_MODELS = ["clip-vit-base", "siglip2", "imagebind-hybrid"];
+const IMG_MODELS = [
+  "auto",
+  "siglip2"
+];
 
 const electron = (window as any).require
   ? (window as any).require("electron")
@@ -26,17 +27,82 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     const stored = window.localStorage.getItem("shelf-sync-interval");
     return stored ? parseInt(stored, 10) : 1;
   });
-  const [topK, setTopK] = useState(5);
+  const [topK, setTopK] = useState(8);
   const [chunkingStrategy, setChunkingStrategy] = useState<
     "recursive" | "fixed"
   >("recursive");
-  const [chunkSize, setChunkSize] = useState(512);
-  const [overlap, setOverlap] = useState(64);
-  const [batch, setBatch] = useState(32);
+  const [chunkSize, setChunkSize] = useState(500);
+  const [overlap, setOverlap] = useState(50);
+  const [batch, setBatch] = useState(1);
   const [docModel, setDocModel] = useState(DOC_MODELS[0]);
   const [imgModel, setImgModel] = useState(IMG_MODELS[0]);
+  const [keepModelsInMemory, setKeepModelsInMemory] = useState(false);
+  const [pdfComplexityThreshold, setPdfComplexityThreshold] = useState(9);
   const [dirs, setDirs] = useState<string[]>([]);
   const [dirsLoading, setDirsLoading] = useState(false);
+
+  // Store committed values to reset on cancel
+  const [committedValues, setCommittedValues] = useState({
+    syncInterval: 1,
+    topK: 8,
+    chunkingStrategy: "recursive" as "recursive" | "fixed",
+    chunkSize: 500,
+    overlap: 50,
+    batch: 1,
+    docModel: DOC_MODELS[0],
+    imgModel: IMG_MODELS[0],
+    keepModelsInMemory: false,
+    pdfComplexityThreshold: 9,
+  });
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/config/");
+      if (response.ok) {
+        const data = await response.json();
+        const newValues = {
+          syncInterval: data.sync_interval ?? 1,
+          topK: data.top_k ?? 8,
+          chunkingStrategy: (data.chunk_strategy ?? "recursive") as "recursive" | "fixed",
+          chunkSize: data.chunk_size ?? 500,
+          overlap: data.chunk_overlap ?? 50,
+          batch: data.batch_size ?? 1,
+          docModel: data.cur_text_embedding_model ?? DOC_MODELS[0],
+          imgModel: data.cur_image_embedding_model ?? IMG_MODELS[0],
+          keepModelsInMemory: data.keep_models_in_memory ?? false,
+          pdfComplexityThreshold: data.pdf_complexity_threshold ?? 9,
+        };
+        setCommittedValues(newValues);
+        setSyncInterval(newValues.syncInterval);
+        setTopK(newValues.topK);
+        setChunkingStrategy(newValues.chunkingStrategy);
+        setChunkSize(newValues.chunkSize);
+        setOverlap(newValues.overlap);
+        setBatch(newValues.batch);
+        setDocModel(newValues.docModel);
+        setImgModel(newValues.imgModel);
+        setKeepModelsInMemory(newValues.keepModelsInMemory);
+        setPdfComplexityThreshold(newValues.pdfComplexityThreshold);
+      }
+    } catch (err) {
+      console.error("Failed to load settings:", err);
+    }
+  };
+
+  const handleCancel = () => {
+    // Reset all values to committed state
+    setSyncInterval(committedValues.syncInterval);
+    setTopK(committedValues.topK);
+    setChunkingStrategy(committedValues.chunkingStrategy);
+    setChunkSize(committedValues.chunkSize);
+    setOverlap(committedValues.overlap);
+    setBatch(committedValues.batch);
+    setDocModel(committedValues.docModel);
+    setImgModel(committedValues.imgModel);
+    setKeepModelsInMemory(committedValues.keepModelsInMemory);
+    setPdfComplexityThreshold(committedValues.pdfComplexityThreshold);
+    onClose();
+  };
 
   const refreshTrackedDirectories = async () => {
     setDirsLoading(true);
@@ -54,6 +120,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   };
 
   useEffect(() => {
+    // Load settings only once on component mount
+    void loadSettings();
+  }, []);
+
+  useEffect(() => {
+    // Refresh tracked directories when modal opens
     if (open) {
       void refreshTrackedDirectories();
     }
@@ -121,7 +193,22 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         batch_size: batch,
         cur_text_embedding_model: docModel,
         cur_image_embedding_model: imgModel,
+        keep_models_in_memory: keepModelsInMemory,
+        pdf_complexity_threshold: pdfComplexityThreshold,
       }),
+    });
+    // Update committed values to the new saved state
+    setCommittedValues({
+      syncInterval,
+      topK,
+      chunkingStrategy,
+      chunkSize,
+      overlap,
+      batch,
+      docModel,
+      imgModel,
+      keepModelsInMemory,
+      pdfComplexityThreshold,
     });
     onClose();
   };
@@ -139,7 +226,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           open ? "opacity-100" : "opacity-0"
         }`}
         aria-label="Close settings"
-        onClick={onClose}
+        onClick={handleCancel}
       />
       <div
         role="dialog"
@@ -160,7 +247,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCancel}
             className="rounded-full p-2 text-foreground-muted transition hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Close"
           >
@@ -288,6 +375,35 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               onChange={setTopK}
             />
             <div>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/30 p-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Keep models loaded in VRAM
+                  </p>
+                  <p className="mt-0.5 text-xs text-foreground-muted">
+                    Keeps embedding models always loaded in VRAM even when not actively used to eliminate model loading overhead. When off, models are moved to RAM when idle.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setKeepModelsInMemory(!keepModelsInMemory)}
+                  role="switch"
+                  aria-checked={keepModelsInMemory}
+                  className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border-2 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    keepModelsInMemory
+                      ? "border-primary bg-primary"
+                      : "border-border bg-surface-muted"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform duration-200 ${
+                      keepModelsInMemory ? "translate-x-7" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+            <div>
               <label
                 htmlFor="chunking-strategy"
                 className="mb-1 block text-sm font-medium text-foreground"
@@ -326,9 +442,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <SliderField
               label="Chunking size"
               description="Target token length per chunk for text indexing."
-              min={128}
-              max={2048}
-              step={64}
+              min={100}
+              max={2000}
+              step={50}
               value={chunkSize}
               onChange={setChunkSize}
             />
@@ -336,17 +452,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               label="Chunk overlap"
               description="Shared tokens between adjacent chunks for continuity."
               min={0}
-              max={256}
-              step={16}
+              max={250}
+              step={5}
               value={overlap}
               onChange={setOverlap}
             />
             <SliderField
               label="Batching size"
               description="Files processed per embedding batch."
-              min={4}
-              max={128}
-              step={4}
+              min={1}
+              max={64}
+              step={1}
               value={batch}
               onChange={setBatch}
             />
@@ -427,6 +543,16 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
             </div>
 
+            <SliderField
+              label="PDF complexity threshold"
+              description="PDFs above the threshold use a slower, more accurate parser."
+              min={0}
+              max={9}
+              step={1}
+              value={pdfComplexityThreshold}
+              onChange={setPdfComplexityThreshold}
+            />
+
             <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
               <h3 className="mb-2 text-sm font-semibold text-foreground">
                 Database
@@ -448,7 +574,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCancel}
             className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Cancel
