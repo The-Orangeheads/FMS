@@ -150,7 +150,7 @@ export function SearchResults({
           <li key={r.name}>
             <button
               type="button"
-              onClick={async () => {
+              onDoubleClick={async () => {
                 if (!electron?.ipcRenderer || !r.path) return;
                 try {
                   await electron.ipcRenderer.invoke("open-file-in-os", r.path);

@@ -153,7 +153,7 @@ export function RecentlyOpened({
             <li key={f.path}>
             <button
               type="button"
-              onClick={async () => {
+              onDoubleClick={async () => {
                 if (!electron?.ipcRenderer) return;
                 try {
                   const result = await electron.ipcRenderer.invoke("open-file-in-os", f.path);
