@@ -274,33 +274,23 @@ interface SyncButtonProps {
   onSync: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
-// Define animation style once at module level to prevent recreation
-const SYNC_BUTTON_STYLE = document.createElement('style');
-SYNC_BUTTON_STYLE.textContent = `
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-`;
-if (typeof document !== 'undefined' && !document.head.querySelector('style[data-sync-button]')) {
-  SYNC_BUTTON_STYLE.setAttribute('data-sync-button', '');
-  document.head.appendChild(SYNC_BUTTON_STYLE);
+// Define animation style once at module level
+if (typeof document !== 'undefined' && !document.querySelector('style[data-sync-animation]')) {
+  const style = document.createElement('style');
+  style.setAttribute('data-sync-animation', '');
+  style.textContent = `
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .sync-button-spinner {
+      animation: spin 1s linear infinite;
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
-
-  // Use useLayoutEffect to update animation state without triggering re-renders
-  useLayoutEffect(() => {
-    if (svgRef.current) {
-      if (resyncing) {
-        svgRef.current.style.animation = 'spin 1s linear infinite';
-      } else {
-        svgRef.current.style.animation = 'none';
-      }
-    }
-  }, [resyncing]);
-
   return (
     <button
       type="button"
@@ -318,8 +308,7 @@ const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonPro
       }}
     >
       <svg
-        ref={svgRef}
-        className="h-4 w-4 flex-shrink-0"
+        className={`h-4 w-4 flex-shrink-0 ${resyncing ? 'sync-button-spinner' : ''}`}
         viewBox="0 0 24 24"
         fill="none"
         strokeWidth="2"
