@@ -17,13 +17,20 @@ type Active = {
 
 // Fixed: added queue to START_SYNC, added SYNC_COMPLETE
 type BackendMessage =
-  | { type: "START_SYNC"; total: number; queue: Queued[] }
+  | { 
+    type: "START_SYNC";
+    total: number;
+    queue: Queued[];
+    analytics: { [key: string]: number[] };
+  }
   | {
       type: "SYNC_PROGRESS";
       current_file: string;
       progress: number;
       remaining: number;
       duration_seconds?: number;
+      file_type: string;
+      file_size: number;
     }
   | { type: "FILE_STATUS"; message: string }
   | { type: "SYNC_ERROR"; file: string; error: string }
@@ -45,6 +52,7 @@ type SharedEmbeddingState = {
   totalFiles: number;
   completedFiles: number;
   currentFileFraction: number;
+  analytics: { [key: string]: number[] } | null;
 };
 let sharedState: SharedEmbeddingState = {
   active: null,
@@ -54,6 +62,7 @@ let sharedState: SharedEmbeddingState = {
   totalFiles: 0,
   completedFiles: 0,
   currentFileFraction: 0,
+  analytics: null,
 };
 
 function readHistoryFromStorage(): Completed[] {
@@ -122,6 +131,7 @@ function applyEmbeddingWsMessage(data: BackendMessage) {
         completedFiles: 0,
         currentFileFraction: 0,
         active: null,
+        analytics: data.analytics,
       };
       broadcastUiState();
       break;
@@ -262,9 +272,11 @@ function ensureSharedSocketConnection() {
 export function ActivityEmbedding({
   onViewAll,
   showFull,
+  onAnalyticsUpdate,
 }: {
   onViewAll?: () => void;
   showFull?: boolean;
+  onAnalyticsUpdate?: (analytics: { [key: string]: number[] } | null) => void;
 }) {
   const [active, setActive] = useState<Active | null>(null);
   const [queue, setQueue] = useState<Queued[]>([]);
@@ -276,6 +288,9 @@ export function ActivityEmbedding({
     completedFiles: sharedState.completedFiles,
     currentFileFraction: sharedState.currentFileFraction,
   });
+  const [analytics, setAnalytics] = useState<{ [key: string]: number[] } | null>(
+    sharedState.analytics
+  );
 
   useEffect(() => {
     setActive(sharedState.active);
@@ -287,6 +302,7 @@ export function ActivityEmbedding({
       completedFiles: sharedState.completedFiles,
       currentFileFraction: sharedState.currentFileFraction,
     });
+    setAnalytics(sharedState.analytics);
     ensureSharedSocketConnection();
   }, []);
 
@@ -304,6 +320,7 @@ export function ActivityEmbedding({
         completedFiles: next.completedFiles,
         currentFileFraction: next.currentFileFraction,
       });
+      setAnalytics(next.analytics);
     };
     window.addEventListener(EMBEDDING_UI_UPDATED_EVENT, onUiUpdated as EventListener);
     const onHistoryUpdated = (event: Event) => {
@@ -371,6 +388,10 @@ export function ActivityEmbedding({
     },
     []
   );
+
+  useEffect(() => {
+    onAnalyticsUpdate?.(analytics);
+  }, [analytics, onAnalyticsUpdate]);
 
   const sidebarPreviewLimit = 5;
   const queueWithoutActive = active

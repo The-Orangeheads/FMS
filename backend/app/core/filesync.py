@@ -216,7 +216,6 @@ class fileSync:
                     category[2] -= fsize
                     paths_to_add.append(path)
 
-            #TODO Send analytics to frontend
             
             #send queue to frontend and unlock sync button
             # websocket magic here
@@ -225,31 +224,36 @@ class fileSync:
             await ws_manager.broadcast(
                 json.dumps({
                     "type": "START_SYNC",
-                    "status": "started",
+                    # "status": "started",
                     "total": total_files,
                     "queue": queue_data,
+                    "analytics": analytics
                     })
                 )
             
             for index, path in enumerate(paths_to_add):
                 await self.check_cancel()
 
-                #! TIME BOMB PREVENTION SQUAD: uncomment if you don't have models
-                # print(f"Processing: {path}")
-                # await asyncio.sleep(5)
-                # continue
+
+                [file_type, fsize] = file_data[path]
 
                 try:
                     loop = asyncio.get_event_loop()
                     start_time = loop.time()
-                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
+
+                    #! TIME BOMB PREVENTION SQUAD: comment if you don't have models
+                    print(f"Processing: {path}")
+                    # await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
+                    await asyncio.sleep(5)
                     duration = round(loop.time() - start_time, 3)
                     await ws_manager.broadcast(json.dumps({
                         "type": "SYNC_PROGRESS",
                         "current_file": os.path.basename(path),
                         "progress": int((index + 1) / total_files * 100),
                         "remaining": total_files - index - 1,
-                        "duration_seconds": duration
+                        "duration_seconds": duration,
+                        "file_type": file_type,
+                        "file_size": fsize
                     }))
                 except Exception as e:
                     await ws_manager.broadcast(json.dumps({

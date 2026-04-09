@@ -10,54 +10,61 @@ type StorageSegment = {
   supportsEmbedding?: boolean
 }
 
-const SEGMENTS: StorageSegment[] = [
-  {
-    key: 'documents',
-    label: 'Documents',
-    pct: 40,
-    color: 'var(--color-primary)',
-    fadedColor: 'rgba(59, 140, 255, 0.42)',
-    embeddedColor: '#1e6ef4',
-    count: 452,
-    embeddedCount: 250,
-    supportsEmbedding: true,
-  },
-  {
-    key: 'images',
-    label: 'Images',
-    pct: 30,
-    color: '#34d399',
-    fadedColor: 'rgba(52, 211, 153, 0.40)',
-    embeddedColor: '#1d8f67',
-    count: 288,
-    embeddedCount: 234,
-    supportsEmbedding: true,
-  },
-  {
-    key: 'audio',
-    label: 'Audio',
-    pct: 15,
-    color: '#fbbf24',
-    fadedColor: 'rgba(251, 191, 36, 0.38)',
-    embeddedColor: '#d97706',
-    count: 98,
-    embeddedCount: 64,
-    supportsEmbedding: true,
-  },
-  {
-    key: 'others',
-    label: 'Others',
-    pct: 15,
-    color: '#a78bfa',
-    fadedColor: '#a78bfa',
-    count: 120,
-    supportsEmbedding: false,
-  },
-]
+type AnalyticsData = {
+  [category: string]: [entries_done: number, total_entries: number, size_done: number, total_size: number]
+}
+
+const DEFAULT_SEGMENTS: StorageSegment[] = []
+
+function mapAnalyticsToSegments(analytics: AnalyticsData): StorageSegment[] {
+  // Map backend category names to StorageSegment keys
+  const categoryMap: { [key: string]: 'documents' | 'images' | 'audio' | 'others' } = {
+    document: 'documents',
+    image: 'images',
+    audio: 'audio',
+    other: 'others',
+  }
+
+  // Calculate total size
+  const totalSize = Object.values(analytics).reduce((sum, [, , , size]) => sum + size, 0)
+  if (totalSize === 0) return DEFAULT_SEGMENTS
+
+  const segments: StorageSegment[] = []
+  const colors: { [key: string]: { color: string; faded: string; embedded?: string } } = {
+    documents: { color: 'var(--color-primary)', faded: 'rgba(59, 140, 255, 0.42)', embedded: '#1e6ef4' },
+    images: { color: '#34d399', faded: 'rgba(52, 211, 153, 0.40)', embedded: '#1d8f67' },
+    audio: { color: '#fbbf24', faded: 'rgba(251, 191, 36, 0.38)', embedded: '#d97706' },
+    others: { color: '#a78bfa', faded: '#a78bfa' },
+  }
+
+  Object.entries(analytics).forEach(([category, [done, total, , size]]) => {
+    const segmentKey = categoryMap[category] || 'others'
+    const pct = totalSize > 0 ? (size / totalSize) * 100 : 0
+    const colorScheme = colors[segmentKey]
+
+    segments.push({
+      key: segmentKey,
+      label: DEFAULT_SEGMENTS.find(s => s.key === segmentKey)?.label || category,
+      pct,
+      color: colorScheme.color,
+      fadedColor: colorScheme.faded,
+      embeddedColor: colorScheme.embedded,
+      count: total,
+      embeddedCount: done,
+      supportsEmbedding: segmentKey !== 'others',
+    })
+  })
+
+  return segments.length > 0 ? segments : DEFAULT_SEGMENTS
+}
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) }
+}
+
+function formatPercentage(value: number): string {
+  return (Math.round(value * 10) / 10).toString().replace(/\.0$/, '')
 }
 
 function donutArc(
@@ -84,9 +91,11 @@ function donutArc(
 
 type StorageDonutProps = {
   usedTotalLabel: string
+  analytics?: AnalyticsData
 }
 
-export function StorageDonut({ usedTotalLabel }: StorageDonutProps) {
+export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
+  const SEGMENTS = analytics ? mapAnalyticsToSegments(analytics) : DEFAULT_SEGMENTS
   const cx = 64
   const cy = 64
   const rOuter = 52
@@ -186,7 +195,7 @@ export function StorageDonut({ usedTotalLabel }: StorageDonutProps) {
                 </span>
               </span>
             </span>
-            <span className="font-medium tabular-nums text-foreground">{segment.pct}%</span>
+            <span className="font-medium tabular-nums text-foreground">{formatPercentage(segment.pct)}%</span>
           </li>
         ))}
       </ul>

@@ -24,6 +24,7 @@ function Dashboard() {
   const [isSearching, setIsSearching] = useState(false);
   const [currentView, setCurrentView] = useState<View>("main");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [analytics, setAnalytics] = useState<{ [key: string]: number[] } | null>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1024px)");
@@ -55,6 +56,21 @@ function Dashboard() {
   const goToRecents = useCallback(() => setCurrentView("recents"), []);
   const goToCleanup = useCallback(() => setCurrentView("cleanup"), []);
   const goToEmbedding = useCallback(() => setCurrentView("embedding"), []);
+
+  // Calculate total storage size from analytics
+  const totalStorageSize = analytics
+    ? Object.values(analytics).reduce((sum, [, , , size]) => sum + size, 0)
+    : 0;
+
+  function formatBytes(bytes: number): string {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+  }
+
+  const usedTotalLabel = analytics ? formatBytes(totalStorageSize) : "0 B";
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
@@ -96,12 +112,12 @@ function Dashboard() {
                   </p>
                 </div>
                 <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.5rem] bg-surface-muted p-4">
-                  <StorageDonut usedTotalLabel="186 GB" />
+                  <StorageDonut usedTotalLabel={usedTotalLabel} analytics={analytics as any} />
                 </div>
               </section>
 
               <div className="rounded-[1.75rem] border border-border bg-surface-elevated p-4 shadow-soft">
-                <ActivityEmbedding onViewAll={goToEmbedding} />
+                <ActivityEmbedding onViewAll={goToEmbedding} onAnalyticsUpdate={setAnalytics} />
               </div>
             </div>
           </div>
