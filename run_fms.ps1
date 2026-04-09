@@ -1,21 +1,40 @@
-# Start backend in a hidden background process
-$BackendProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c .\venv\Scripts\activate && uvicorn app.main:app --host 127.0.0.1 --port 8000" -WindowStyle Hidden -PassThru
+param(
+    [switch]$r,
+    [switch]$help
+)
 
-# Silently wait until the backend is actively listening on port 8000
-while ($true) {
-    try {
-        $tcp = New-Object System.Net.Sockets.TcpClient("127.0.0.1", 8000)
-        $tcp.Close()
-        break
-    } catch {
-        Start-Sleep -Seconds 1
-    }
+# Default port if not specified
+if (-not $p) { $p = 8000 }
+
+# Get script filename automatically
+$scriptName = $MyInvocation.MyCommand.Name
+
+# Help
+if ($help) {
+    Write-Output "Runs both the frontend and backend."
+    Write-Output "Usage: ./$scriptName [options]"
+    Write-Output ""
+    Write-Output "Options:"
+    Write-Output "  -r              Enable auto-reload"
+    Write-Output "  -help           Show this help message"
+    exit
 }
 
-# Launch frontend
-Set-Location -Path ".\frontend"
-npm run electron:dev
+# Path relative to script
+$projectRoot = $PSScriptRoot
 
-# Step back to the root folder and run the clean port script
-Set-Location -Path ".."
-.\clean_port.ps1
+
+$frontendPath = Join-Path $projectRoot "run_frontend.ps1"
+$backendPath = Join-Path $projectRoot "run_backend.ps1"
+
+
+Write-Output "Running Frontend"
+$frontendProcess = Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$frontendPath`""
+
+
+Write-Output "Running Backend"
+& $backendPath
+
+
+Write-Output "Waiting for frontend to exit"
+$frontendProcess.WaitForExit()
