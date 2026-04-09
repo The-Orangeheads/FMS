@@ -148,9 +148,6 @@ class FileHandler:
         )]
         
         # 3. Embed using the current images embedding model
-
-        if notify_cb:
-            notify_cb(f"Embedding image... : {file_name} : 30")
         
         embedded_data = embedding_service.process_embeddings(target_model, inputs, notify_cb)
 

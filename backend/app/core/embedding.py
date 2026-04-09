@@ -83,6 +83,11 @@ class SBERTModel(EmbeddingModelInterface):
     so that's why we extract the chunks' text into a variable called texts.
     """
     def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
+        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
+
+        if notify_cb:
+            notify_cb(f"Loading Embedding Model... : {file_name} : 10")
+        
         with self.vram_lock:
             self.currently_embedding += 1
         self.load_on_vram()
@@ -113,10 +118,8 @@ class SBERTModel(EmbeddingModelInterface):
         total_batches = math.ceil(len(sorted_texts) / batch_size)
         sorted_embds = []
 
-        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
-        
         if notify_cb:
-            notify_cb(f"Embedded 0 batches out of {total_batches}: {file_name} : 10")
+            notify_cb(f"Embedded 0 batches out of {total_batches}: {file_name} : 15")
 
         for batch_index, i in enumerate(range(0, len(sorted_texts), batch_size), start=1):
             cur_batch = sorted_texts[i : i + batch_size]
@@ -130,7 +133,7 @@ class SBERTModel(EmbeddingModelInterface):
             sorted_embds.extend(batch_embeddings.cpu().tolist())
             
             if notify_cb:
-                percentage = 10 + round(batch_index/total_batches * 85)
+                percentage = 15 + round(batch_index/total_batches * 80)
                 notify_cb(f"Embedded {batch_index} batches out of {total_batches}: {file_name} : {percentage}")
             
         # Restore the original batches order
@@ -219,12 +222,20 @@ class SiglipModel(EmbeddingModelInterface):
 
     @torch.no_grad()
     def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
+        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
+        
+        if notify_cb:
+            notify_cb(f"Loading Embedding Model... : {file_name} : 25")
+        
         with self.vram_lock:
             self.currently_embedding += 1
         self.load_on_vram()
 
         embeddings: List[List[float]] = []
 
+        if notify_cb:
+            notify_cb(f"Embedding image... : {file_name} : 35")
+        
         for chunk in chunks:
             if chunk.image_base64:
                 image_data = base64.b64decode(chunk.image_base64)
