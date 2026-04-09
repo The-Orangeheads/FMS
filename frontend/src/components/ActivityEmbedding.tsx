@@ -274,6 +274,19 @@ interface SyncButtonProps {
   onSync: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
+// Define animation style once at module level to prevent recreation
+const SYNC_BUTTON_STYLE = document.createElement('style');
+SYNC_BUTTON_STYLE.textContent = `
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
+if (typeof document !== 'undefined' && !document.head.querySelector('style[data-sync-button]')) {
+  SYNC_BUTTON_STYLE.setAttribute('data-sync-button', '');
+  document.head.appendChild(SYNC_BUTTON_STYLE);
+}
+
 const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonProps) {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -325,12 +338,6 @@ const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonPro
         <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
         <path d="M16 16h5v5" />
       </svg>
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </button>
   );
 }, (prevProps, nextProps) => {
