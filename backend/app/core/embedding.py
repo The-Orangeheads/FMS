@@ -1,7 +1,8 @@
 from typing import List
 from app.schemas import ChunkInput, EmbeddingOutput, EmbeddingResponse
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 from transformers import AutoModel, AutoProcessor
+from FlagEmbedding import BGEM3FlagModel
 import torch
 from PIL import Image
 import io
@@ -175,3 +176,44 @@ class SiglipModel(EmbeddingModelInterface):
             embeddings.append(vec.squeeze(0).cpu().tolist())
 
         return embeddings
+    
+
+class BGEM3Model(EmbeddingModelInterface):
+    def __init__(self, model_id: str):
+        self.model = BGEM3FlagModel(model_id, use_fp16=torch.cuda.is_available(), device="cuda" if torch.cuda.is_available() else "cpu")
+
+    def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
+        """Returns dense embeddings."""
+        texts = [c.text.strip() for c in chunks]
+        output = self.model.encode(texts, return_dense=True, return_sparse=False, return_colbert_vecs=False)
+        return output['dense_vecs'].tolist()
+
+    # N: number of candidates, Lq = query length, Lc = candidate length
+    def compute_hybrid_score(self, query: str, candidates: List[str]) -> dict:
+        """Returns hybrid scores for search/reranking."""
+        
+        
+        if not candidates:
+            return {'colbert+sparse+dense': []}
+        
+        pairs = [[query, c] for c in candidates] # N
+        return self.model.compute_score(
+            pairs,
+            max_passage_length=500, # Lc
+            weights_for_different_modes=[0.3, 0.3, 0.4]  # dense: N*Lc*Lc, sparse: N*Lq*Lc, colbert: N*Lq*Lc
+        )
+        
+
+class CrossEncoderReranker:
+    def __init__(self):
+        self.model = CrossEncoder("BAAI/bge-reranker-v2-m3",
+                                max_length=512,
+                                activation_fn=torch.nn.Sigmoid()
+                    )
+        
+    def rerank(self, query: str, candidates: List) -> list:
+        pairs = [[query, c] for c in candidates]
+        scores = self.model.predict(pairs)
+        return scores.tolist() if hasattr(scores, 'tolist') else list(scores)
+    
+reranker = CrossEncoderReranker()

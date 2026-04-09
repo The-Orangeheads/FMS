@@ -9,6 +9,7 @@ from app.services.vector_db_service import images_db_service, documents_db_servi
 from app.core.vector_db import ChromaDBImpl
 from app.schemas import VectorInsertRequest, VectorQueryRequest, ImgQueryRequest, ChunkInput
 from app.services.embedding_service import embedding_service
+from app.services.search_service import search_service
 import base64
 
 # initialize logging
@@ -30,25 +31,7 @@ def _get_service_for_collection(collection: str) -> ChromaDBImpl:
     return service
 
 def text_query(chunk_input):
-    text_model = (settings.DEFAULT_TEXT_EMBEDDING_MODEL
-                if settings.cur_text_embedding_model == "auto"
-                else settings.cur_text_embedding_model)
-    
-    doc_emb_res = embedding_service.process_embeddings(text_model, [chunk_input])
-    raw_doc_hits = COLLECTION_MAP["documents"].query(doc_emb_res.results[0].vector, k=settings.top_k)
-    
-    results = []
-    for hit in (raw_doc_hits or []):
-        score = hit.get("score", 0.0)
-        if score < 0.10:
-            continue
-        results.append({
-            "id": hit.get("id") or f"unknownID_{uuid4().hex[:6]}",
-            "score": score,
-            "text": hit.get("document", ""),
-            "type": "text",
-            "metadata": hit.get("metadata", {}),
-        })
+    results = search_service.search(chunk_input.text)
     
     return results
 

@@ -12,7 +12,7 @@ class EmbeddingService:
         # We here include all of the models we have to offer
         self.model_registry = {
             "bge-m3": {
-                "class": SBERTModel, 
+                "class": BGEM3Model, 
                 "id": "BAAI/bge-m3",
                 "capabilities": ["text"],
                 "languages": ["en", "multi"]
