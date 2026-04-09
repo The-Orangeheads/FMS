@@ -290,6 +290,40 @@ if (typeof document !== 'undefined' && !document.querySelector('style[data-sync-
 }
 
 const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const isAnimatingRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    // Only update if animation state actually needs to change
+    const shouldAnimate = resyncing;
+    if (isAnimatingRef.current === shouldAnimate) return;
+
+    isAnimatingRef.current = shouldAnimate;
+    if (shouldAnimate) {
+      svg.classList.add('sync-button-spinner');
+    } else {
+      svg.classList.remove('sync-button-spinner');
+    }
+  }, [resyncing]);
+
+  const svgStyle = useMemo(() => ({
+    transformOrigin: '50% 50%',
+    transformBox: 'fill-box',
+    willChange: 'transform',
+    stroke: 'currentColor',
+    display: 'block' as const,
+  }), []);
+
+  const buttonStyle = useMemo(() => ({
+    lineHeight: 1,
+    display: 'inline-flex' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  }), []);
+
   return (
     <button
       type="button"
@@ -299,27 +333,17 @@ const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonPro
       title="Resync embedding queue"
       aria-label="Resync embedding files"
       className="inline-flex items-center justify-center rounded-full p-2 text-foreground-muted hover:bg-surface-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      style={{
-        lineHeight: 1,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
+      style={buttonStyle}
     >
       <svg
-        className={`h-4 w-4 flex-shrink-0 ${resyncing ? 'sync-button-spinner' : ''}`}
+        ref={svgRef}
+        className="h-4 w-4 flex-shrink-0"
         viewBox="0 0 24 24"
         fill="none"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        style={{
-          transformOrigin: '50% 50%',
-          transformBox: 'fill-box',
-          willChange: 'transform',
-          stroke: 'currentColor',
-          display: 'block'
-        }}
+        style={svgStyle}
       >
         <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
         <path d="M3 3v5h5" />
@@ -328,8 +352,6 @@ const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonPro
       </svg>
     </button>
   );
-}, (prevProps, nextProps) => {
-  return prevProps.resyncing === nextProps.resyncing && prevProps.onSync === nextProps.onSync;
 });
 
 export function ActivityEmbedding({
@@ -432,7 +454,7 @@ export function ActivityEmbedding({
       if (resyncing) return;
       void handleSync();
     },
-    [handleSync]
+    [handleSync, resyncing]
   );
 
   const handleViewAllMouseDown = useCallback(
