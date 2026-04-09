@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type MouseEvent, memo } from "react";
-import { IconFileText, IconRefresh } from "./icons";
+import { IconFileText } from "./icons";
 
 type Completed = { id: string; name: string; durationLabel: string };
 type Queued = { id: string; name: string };
@@ -283,13 +283,44 @@ const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonPro
       disabled={resyncing}
       title="Resync embedding queue"
       aria-label="Resync embedding files"
-      className="rounded-full p-2 text-foreground-muted hover:bg-surface-muted hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="inline-flex items-center justify-center rounded-full p-2 text-foreground-muted hover:bg-surface-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      style={{
+        lineHeight: 1,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
     >
-      <IconRefresh className={`h-4 w-4 ${resyncing ? "animate-spin" : ""}`} />
+      <svg
+        className="h-4 w-4 flex-shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          animation: resyncing ? 'spin 1s linear infinite' : 'none',
+          transformOrigin: '50% 50%',
+          transformBox: 'fill-box',
+          willChange: 'transform',
+          stroke: 'currentColor',
+          display: 'block'
+        }}
+      >
+        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+        <path d="M3 3v5h5" />
+        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+        <path d="M16 16h5v5" />
+      </svg>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </button>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison: only re-render if resyncing actually changed
   return prevProps.resyncing === nextProps.resyncing && prevProps.onSync === nextProps.onSync;
 });
 

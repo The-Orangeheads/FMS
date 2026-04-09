@@ -14,6 +14,8 @@ type AnalyticsData = {
   [category: string]: [entries_done: number, total_entries: number, size_done: number, total_size: number]
 }
 
+import { useTheme } from '../context/ThemeContext'
+
 const DEFAULT_ANALYTICS: AnalyticsData = {
   document: [0, 0, 0, 0],
   image: [0, 0, 0, 0],
@@ -112,6 +114,7 @@ type StorageDonutProps = {
 }
 
 export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
+  const { theme } = useTheme()
   const analyticsData = analytics || DEFAULT_ANALYTICS
   const SEGMENTS = mapAnalyticsToSegments(analyticsData)
   const cx = 64
@@ -123,6 +126,9 @@ export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
   // Check if we have data (total size > 0)
   const totalSize = Object.values(analyticsData).reduce((sum, [, , , size]) => sum + size, 0)
   const hasData = totalSize > 0
+
+  // Gray color based on theme
+  const emptyGrayColor = theme === 'dark' ? '#374151' : '#d1d5db'
 
   const embeddableSegments = SEGMENTS.filter((segment) => segment.supportsEmbedding)
   const totalFiles = embeddableSegments.reduce((sum, segment) => sum + segment.count, 0)
@@ -163,7 +169,7 @@ export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
             <>
               <path
                 d={donutArc(cx, cy, rOuter, rInner, 0, 359.9)}
-                fill="#d1d5db"
+                fill={emptyGrayColor}
               />
             </>
           )}
