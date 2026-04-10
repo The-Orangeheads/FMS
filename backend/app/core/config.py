@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     sync_interval : float = 1 # IN MINUTES
     keep_models_in_memory: bool = False
     include_metadata: bool = True
-    search_threshold: float = 15.0
+    search_threshold: float = 0.1
 
     class Config:
         """Pydantic config."""

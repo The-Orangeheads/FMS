@@ -37,10 +37,6 @@ class SearchService:
          
         unique = list(seen.values())[:self.top_k]
         
-        candidates = []
-        for r in unique:
-            filename = os.path.basename(r["metadata"].get("path", ""))
-            candidates.append(f"[{filename}]\n{r['document']}")
         candidates = [r["document"][:MAX_CANDIDATE_CHARS] for r in unique]
         metadata   = [r["metadata"] for r in unique]
         # model = embedding_service._get_model("bge-m3")
@@ -50,7 +46,7 @@ class SearchService:
         reranked = []
         for i in range(len(candidates)):
             score = self.calibrate_scores(logits[i])
-            if score is None:
+            if score is None or score < self.threshold:
                 continue
             reranked.append({
                 "document": candidates[i],
