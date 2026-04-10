@@ -2,7 +2,7 @@ from app.services.embedding_service import embedding_service
 from app.services.vector_db_service import documents_db_service
 from app.core.config import settings
 from app.core.embedding import reranker
-import math
+import math, os
 
 
 DISPLAY_SHIFT = -5.0   # logit at which you want to show ~50%
@@ -30,8 +30,13 @@ class SearchService:
             if path not in seen:
                 seen[path] = r
          
-        unique = list(seen.values())[:self.top_k] 
-        candidates = [r["document"] for r in unique]
+        unique = list(seen.values())[:self.top_k]
+        
+        candidates = []
+        for r in unique:
+            filename = os.path.basename(r["metadata"].get("path", ""))
+            candidates.append(f"[{filename}]\n{r['document']}")
+        candidates = [r["document"][:800] for r in unique]
         metadata   = [r["metadata"] for r in unique]
         # model = embedding_service._get_model("bge-m3")
         # scores = model.compute_hybrid_score(query, candidates)
