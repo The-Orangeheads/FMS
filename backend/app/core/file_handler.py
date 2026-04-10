@@ -2,6 +2,7 @@ import os
 import logging
 import base64
 import mimetypes
+import re
 from typing import List, Dict
 from pathlib import Path
 
@@ -69,6 +70,15 @@ class FileHandler:
                 extracted_pages = [{"page_number": 1, "text": f.read()}]
         else:
             raise Exception("Unsupported file type")
+
+        for page in extracted_pages:
+            if "text" in page and page["text"]:
+                # 1. Compress horizontal whitespace (spaces, tabs) into a single space
+                cleaned_text = re.sub(r'[ \t]+', ' ', page["text"])
+                
+                # 2. Compress extreme vertical whitespace (3+ newlines) down to exactly 2 (\n\n)
+                page["text"] = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+        # =================================================================
         
         result_chunks = self.chunker.chunk_document(
             pages=extracted_pages
@@ -81,7 +91,9 @@ class FileHandler:
         valid_chunks = []
         valid_inputs = []
         for chunk in result_chunks:
+            # Final polish: collapses any remaining newlines within the chunk
             clean_text = " ".join(chunk['text'].split())
+            
             # Only keep chunks that have actual alphanumeric characters and are longer than 5 chars
             if len(clean_text) > 5 and any(char.isalnum() for char in clean_text):
                 valid_inputs.append(ChunkInput(
