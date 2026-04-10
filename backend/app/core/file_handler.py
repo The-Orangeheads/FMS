@@ -19,8 +19,11 @@ class FileHandler:
     SUPPORTED_DOC_FORMATS = {".pdf", ".txt"}
     
     def __init__(self):
-        self.pdf_handler = PDFTextHandler(settings.pdf_complexity_threshold)
+        self.pdf_handler = PDFTextHandler()
         self.chunker = ChunkingService()
+
+        self.last_type : str | None = None
+        self.last_model : str | None = None
     
     def detect_file_type(self, path: str) -> str:
         """
@@ -49,6 +52,8 @@ class FileHandler:
             if settings.cur_text_embedding_model == "auto"
             else settings.cur_text_embedding_model
         )
+
+        self.last_model = target_model
         
         # 1. Process and Chunk Text
         if notify_cb:
@@ -123,6 +128,8 @@ class FileHandler:
             if settings.cur_image_embedding_model == "auto" 
             else settings.cur_image_embedding_model
         )
+
+        self.last_model = target_model
         
         # 1. Read and Encode Image to Base64
 
@@ -141,9 +148,6 @@ class FileHandler:
         )]
         
         # 3. Embed using the current images embedding model
-
-        if notify_cb:
-            notify_cb(f"Embedding image... : {file_name} : 30")
         
         embedded_data = embedding_service.process_embeddings(target_model, inputs, notify_cb)
 
@@ -164,7 +168,13 @@ class FileHandler:
                 }
             )
     
-    def process_file(self, path, notify_cb=None):
+
+    def clear_last_model(self):
+        if not self.last_model:
+            return
+        embedding_service._get_model(self.last_model).free_vram()
+
+    def process_file(self, path, clear_last = False, notify_cb=None):
         if settings.chunk_size <= settings.chunk_overlap:
             raise Exception("Chunk size cannot be less than or equal to the chunk overlap")
         
@@ -172,6 +182,10 @@ class FileHandler:
             raise Exception("File not found")
 
         file_type = self.detect_file_type(path)
+
+        if clear_last and file_type != self.last_type:
+            self.last_type = file_type
+            self.clear_last_model()
 
         # IMAGE PROCESSING
         if file_type == "image":
@@ -182,4 +196,3 @@ class FileHandler:
             self.process_document(path, notify_cb)
         else:
             raise Exception("Unsupported file type")
-

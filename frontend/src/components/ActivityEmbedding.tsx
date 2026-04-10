@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef, useLayoutEffect, type MouseEvent, memo } from "react";
+import { useCallback, useEffect, useState, type MouseEvent, memo } from "react";
 import { IconFileText } from "./icons";
 
 type Completed = { id: string; name: string; durationLabel: string };
@@ -15,14 +15,13 @@ type Active = {
   totalFiles: number;
 };
 
-// Fixed: added queue to START_SYNC, added SYNC_COMPLETE
 type BackendMessage =
-  | { 
-    type: "START_SYNC";
-    total: number;
-    queue: Queued[];
-    analytics: { [key: string]: number[] };
-  }
+  | {
+      type: "START_SYNC";
+      total: number;
+      queue: Queued[];
+      analytics: { [key: string]: number[] };
+    }
   | {
       type: "SYNC_PROGRESS";
       current_file: string;
@@ -43,6 +42,7 @@ const WS_URL = "ws://localhost:8000/ws";
 let sharedSocket: WebSocket | null = null;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 10;
+
 type SharedEmbeddingState = {
   active: Active | null;
   queue: Queued[];
@@ -53,6 +53,7 @@ type SharedEmbeddingState = {
   currentFileFraction: number;
   analytics: { [key: string]: number[] } | null;
 };
+
 let sharedState: SharedEmbeddingState = {
   active: null,
   queue: [],
@@ -85,7 +86,9 @@ function clearHistoryFromStorage() {
 }
 
 function broadcastUiState() {
-  window.dispatchEvent(new CustomEvent(EMBEDDING_UI_UPDATED_EVENT, { detail: sharedState }));
+  window.dispatchEvent(
+    new CustomEvent(EMBEDDING_UI_UPDATED_EVENT, { detail: { ...sharedState } })
+  );
 }
 
 function parseStatusMessage(message: string) {
@@ -104,6 +107,16 @@ function parseStatusMessage(message: string) {
   return { fileName, phaseText, percentage: undefined as number | undefined };
 }
 
+function formatDurationLabel(durationSeconds?: number): string {
+  if (typeof durationSeconds !== "number" || Number.isNaN(durationSeconds)) {
+    return "Embedded";
+  }
+  if (durationSeconds < 1) {
+    return `${Math.max(Math.round(durationSeconds * 1000), 1)} ms`;
+  }
+  return `${durationSeconds.toFixed(durationSeconds >= 10 ? 1 : 2)} s`;
+}
+
 function appendEmbeddingHistoryEntry(currentFile: string, durationSeconds?: number) {
   const prev = readHistoryFromStorage();
   const updated = [
@@ -117,14 +130,13 @@ function appendEmbeddingHistoryEntry(currentFile: string, durationSeconds?: numb
   writeHistoryToStorage(updated);
 }
 
-/** Single handler so multiple ActivityEmbedding mounts do not double-count progress. */
+/** WS message handler — never touches `resyncing` so it won't interfere with the HTTP lifecycle. */
 function applyEmbeddingWsMessage(data: BackendMessage) {
   switch (data.type) {
     case "START_SYNC":
       sharedState = {
         ...sharedState,
         error: null,
-        resyncing: false,
         queue: data.queue,
         totalFiles: data.total,
         completedFiles: 0,
@@ -185,9 +197,12 @@ function applyEmbeddingWsMessage(data: BackendMessage) {
         completedFiles: completed,
         totalFiles: total,
       };
-      const baseQueue = sharedState.queue.length > 0 ? sharedState.queue.slice(1) : [];
+      const baseQueue =
+        sharedState.queue.length > 0 ? sharedState.queue.slice(1) : [];
       const nextQueue =
-        data.remaining <= 0 ? [] : baseQueue.slice(0, Math.max(data.remaining, 0));
+        data.remaining <= 0
+          ? []
+          : baseQueue.slice(0, Math.max(data.remaining, 0));
       sharedState = {
         ...sharedState,
         active: completedActive,
@@ -208,7 +223,6 @@ function applyEmbeddingWsMessage(data: BackendMessage) {
       sharedState = {
         ...sharedState,
         active: null,
-        resyncing: false,
         queue: [],
         totalFiles: 0,
         completedFiles: 0,
@@ -221,25 +235,18 @@ function applyEmbeddingWsMessage(data: BackendMessage) {
       sharedState = {
         ...sharedState,
         error: `Error processing ${data.file}: ${data.error}`,
-        resyncing: false,
       };
       broadcastUiState();
       break;
   }
 }
 
-function formatDurationLabel(durationSeconds?: number): string {
-  if (typeof durationSeconds !== "number" || Number.isNaN(durationSeconds)) {
-    return "Embedded";
-  }
-  if (durationSeconds < 1) {
-    return `${Math.max(Math.round(durationSeconds * 1000), 1)} ms`;
-  }
-  return `${durationSeconds.toFixed(durationSeconds >= 10 ? 1 : 2)} s`;
-}
-
 function ensureSharedSocketConnection() {
-  if (sharedSocket && (sharedSocket.readyState === WebSocket.OPEN || sharedSocket.readyState === WebSocket.CONNECTING)) {
+  if (
+    sharedSocket &&
+    (sharedSocket.readyState === WebSocket.OPEN ||
+      sharedSocket.readyState === WebSocket.CONNECTING)
+  ) {
     return;
   }
 
@@ -269,73 +276,107 @@ function ensureSharedSocketConnection() {
   };
 }
 
+/**
+ * Module-level sync trigger.
+ * `syncInFlight` prevents duplicate requests even if multiple instances call this.
+ * `resyncing` is set on sharedState and broadcast so every mounted instance stays in sync.
+ */
+let syncInFlight = false;
+
+async function triggerSharedSync() {
+  if (syncInFlight) return;
+  syncInFlight = true;
+  sharedState = { ...sharedState, resyncing: true, error: null };
+  broadcastUiState();
+  try {
+    const response = await fetch("http://localhost:8000/api/directory/sync", {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Sync failed: ${response.statusText}`);
+    }
+  } catch (err) {
+    console.error("Sync failed:", err);
+    sharedState = {
+      ...sharedState,
+      error: "Failed to start sync. Please try again.",
+    };
+  } finally {
+    syncInFlight = false;
+    sharedState = { ...sharedState, resyncing: false };
+    broadcastUiState();
+  }
+}
+
 interface SyncButtonProps {
   resyncing: boolean;
   onSync: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
-const SyncButton = memo(function SyncButton({ resyncing, onSync }: SyncButtonProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
-
-  // Use useLayoutEffect to update animation state without triggering re-renders
-  useLayoutEffect(() => {
-    if (svgRef.current) {
-      if (resyncing) {
-        svgRef.current.style.animation = 'spin 1s linear infinite';
-      } else {
-        svgRef.current.style.animation = 'none';
-      }
+// Define animation style once at module level
+if (
+  typeof document !== "undefined" &&
+  !document.querySelector("style[data-sync-animation]")
+) {
+  const style = document.createElement("style");
+  style.setAttribute("data-sync-animation", "");
+  style.textContent = `
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
-  }, [resyncing]);
+    .sync-button-spinner {
+      animation: spin 1s linear infinite;
+    }
+  `;
+  document.head.appendChild(style);
+}
 
-  return (
-    <button
-      type="button"
-      onMouseDown={onSync}
-      onClick={(event) => event.preventDefault()}
-      disabled={resyncing}
-      title="Resync embedding queue"
-      aria-label="Resync embedding files"
-      className="inline-flex items-center justify-center rounded-full p-2 text-foreground-muted hover:bg-surface-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      style={{
-        lineHeight: 1,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-    >
-      <svg
-        ref={svgRef}
-        className="h-4 w-4 flex-shrink-0"
-        viewBox="0 0 24 24"
-        fill="none"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+const SyncButton = memo(
+  function SyncButton({ resyncing, onSync }: SyncButtonProps) {
+    return (
+      <button
+        type="button"
+        onMouseDown={onSync}
+        onClick={(event) => event.preventDefault()}
+        disabled={resyncing}
+        title="Resync embedding queue"
+        aria-label="Resync embedding files"
+        className="inline-flex items-center justify-center rounded-full p-2 text-foreground-muted hover:bg-surface-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         style={{
-          transformOrigin: '50% 50%',
-          transformBox: 'fill-box',
-          willChange: 'transform',
-          stroke: 'currentColor',
-          display: 'block'
+          lineHeight: 1,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-        <path d="M3 3v5h5" />
-        <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-        <path d="M16 16h5v5" />
-      </svg>
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </button>
-  );
-}, (prevProps, nextProps) => {
-  return prevProps.resyncing === nextProps.resyncing && prevProps.onSync === nextProps.onSync;
-});
+        <svg
+          className={`h-4 w-4 flex-shrink-0 ${resyncing ? "sync-button-spinner" : ""}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            transformOrigin: "50% 50%",
+            transformBox: "fill-box",
+            willChange: "transform",
+            stroke: "currentColor",
+            display: "block",
+          }}
+        >
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+          <path d="M16 16h5v5" />
+        </svg>
+      </button>
+    );
+  },
+  (prevProps, nextProps) =>
+    prevProps.resyncing === nextProps.resyncing &&
+    prevProps.onSync === nextProps.onSync
+);
 
 export function ActivityEmbedding({
   onViewAll,
@@ -346,11 +387,11 @@ export function ActivityEmbedding({
   showFull?: boolean;
   onAnalyticsUpdate?: (analytics: { [key: string]: number[] } | null) => void;
 }) {
-  const [active, setActive] = useState<Active | null>(null);
-  const [queue, setQueue] = useState<Queued[]>([]);
+  const [active, setActive] = useState<Active | null>(sharedState.active);
+  const [queue, setQueue] = useState<Queued[]>(sharedState.queue);
   const [history, setHistory] = useState<Completed[]>(() => readHistoryFromStorage());
-  const [resyncing, setResyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [resyncing, setResyncing] = useState(sharedState.resyncing);
+  const [error, setError] = useState<string | null>(sharedState.error);
   const [embeddingMeta, setEmbeddingMeta] = useState({
     totalFiles: sharedState.totalFiles,
     completedFiles: sharedState.completedFiles,
@@ -360,24 +401,15 @@ export function ActivityEmbedding({
     sharedState.analytics
   );
 
+  // Bootstrap shared socket on first mount
   useEffect(() => {
-    setActive(sharedState.active);
-    setQueue(sharedState.queue);
-    setError(sharedState.error);
-    setResyncing(sharedState.resyncing);
-    setEmbeddingMeta({
-      totalFiles: sharedState.totalFiles,
-      completedFiles: sharedState.completedFiles,
-      currentFileFraction: sharedState.currentFileFraction,
-    });
-    setAnalytics(sharedState.analytics);
     ensureSharedSocketConnection();
   }, []);
 
+  // Subscribe to shared-state broadcasts and history updates
   useEffect(() => {
     const onUiUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<SharedEmbeddingState>;
-      const next = customEvent.detail;
+      const next = (event as CustomEvent<SharedEmbeddingState>).detail;
       if (!next) return;
       setActive(next.active);
       setQueue(next.queue);
@@ -390,54 +422,28 @@ export function ActivityEmbedding({
       });
       setAnalytics(next.analytics);
     };
-    window.addEventListener(EMBEDDING_UI_UPDATED_EVENT, onUiUpdated as EventListener);
+
     const onHistoryUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<Completed[]>;
-      setHistory(customEvent.detail ?? []);
+      const detail = (event as CustomEvent<Completed[]>).detail;
+      setHistory(detail ?? []);
     };
+
+    window.addEventListener(EMBEDDING_UI_UPDATED_EVENT, onUiUpdated as EventListener);
     window.addEventListener(HISTORY_UPDATED_EVENT, onHistoryUpdated as EventListener);
+
     return () => {
       window.removeEventListener(EMBEDDING_UI_UPDATED_EVENT, onUiUpdated as EventListener);
       window.removeEventListener(HISTORY_UPDATED_EVENT, onHistoryUpdated as EventListener);
     };
   }, []);
 
-  const handleSync = useCallback(async () => {
-    setResyncing(true);
-    setError(null);
-    sharedState = {
-      ...sharedState,
-      resyncing: true,
-      error: null,
-    };
-    broadcastUiState();
-    try {
-      const response = await fetch("http://localhost:8000/api/directory/sync", {
-        method: "POST",
-      });
-      if (!response.ok) {
-        throw new Error(`Sync failed: ${response.statusText}`);
-      }
-    } catch (err) {
-      console.error("Sync failed:", err);
-      setError("Failed to start sync. Please try again.");
-      setResyncing(false);
-      sharedState = {
-        ...sharedState,
-        error: "Failed to start sync. Please try again.",
-        resyncing: false,
-      };
-      broadcastUiState();
-    }
-  }, []);
-
+  // Stable handler — calls the module-level trigger so every instance shares the lock
   const handleSyncMouseDown = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
-      if (resyncing) return;
-      void handleSync();
+      void triggerSharedSync();
     },
-    [handleSync]
+    []
   );
 
   const handleViewAllMouseDown = useCallback(
@@ -482,32 +488,29 @@ export function ActivityEmbedding({
         0
       )
     : 0;
-  const hasSidebarActivity = Boolean(active) || queueWithoutActive.length > 0 || history.length > 0;
+  const hasSidebarActivity =
+    Boolean(active) || queueWithoutActive.length > 0 || history.length > 0;
   const totalQueueFiles = embeddingMeta.totalFiles;
   const completedQueueFiles =
     totalQueueFiles > 0
       ? Math.min(embeddingMeta.completedFiles, totalQueueFiles)
       : embeddingMeta.completedFiles;
   const inFlightFraction =
-    active && active.progress < 100 ? Math.max(0, Math.min(1, active.progress / 100)) : 0;
+    active && active.progress < 100
+      ? Math.max(0, Math.min(1, active.progress / 100))
+      : 0;
   const totalQueueProgress =
     totalQueueFiles > 0
       ? Math.min(
           100,
-          Math.round(((completedQueueFiles + inFlightFraction) / totalQueueFiles) * 100)
+          Math.round(
+            ((completedQueueFiles + inFlightFraction) / totalQueueFiles) * 100
+          )
         )
       : 0;
 
-  const Wrapper = showFull
-    ? ({ children }: { children: React.ReactNode }) => <>{children}</>
-    : ({ children }: { children: React.ReactNode }) => (
-        <section className="mt-2" aria-labelledby="activity-heading">
-          {children}
-        </section>
-      );
-
-  return (
-    <Wrapper>
+  const content = (
+    <>
       {!showFull && (
         <div className="mb-3 flex items-start justify-between gap-2">
           <h2
@@ -573,26 +576,32 @@ export function ActivityEmbedding({
           </li>
         )}
 
-        {!showFull && queueWithoutActive.slice(0, adjustedVisibleQueueCount).map((job) => (
-          <li key={job.id}>
-            <div className="flex items-start gap-3 opacity-90">
-              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-foreground-muted">
-                <IconFileText className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {job.name}
-                </p>
-                <p className="mt-0.5 text-xs font-medium text-foreground-muted">
-                  In queue
-                </p>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-muted/80" aria-hidden>
-                  <div className="h-full w-0 rounded-full bg-primary/20" />
+        {!showFull &&
+          queueWithoutActive
+            .slice(0, adjustedVisibleQueueCount)
+            .map((job) => (
+              <li key={job.id}>
+                <div className="flex items-start gap-3 opacity-90">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-foreground-muted">
+                    <IconFileText className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {job.name}
+                    </p>
+                    <p className="mt-0.5 text-xs font-medium text-foreground-muted">
+                      In queue
+                    </p>
+                    <div
+                      className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-muted/80"
+                      aria-hidden
+                    >
+                      <div className="h-full w-0 rounded-full bg-primary/20" />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </li>
-        ))}
+              </li>
+            ))}
 
         {!showFull &&
           history.slice(0, adjustedVisibleHistoryCount).map((job) => (
@@ -626,9 +635,12 @@ export function ActivityEmbedding({
             <div className="rounded-3xl border border-border bg-surface-elevated p-4">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Embedding queue</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    Embedding queue
+                  </p>
                   <p className="text-xs text-foreground-muted">
-                    Queue progress: {completedQueueFiles}/{totalQueueFiles || 0} files ({totalQueueProgress}%)
+                    Queue progress: {completedQueueFiles}/
+                    {totalQueueFiles || 0} files ({totalQueueProgress}%)
                   </p>
                 </div>
                 <SyncButton resyncing={resyncing} onSync={handleSyncMouseDown} />
@@ -670,7 +682,9 @@ export function ActivityEmbedding({
                         {active.progress}%
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-foreground-muted">{active.detailText}</p>
+                    <p className="mt-1 text-xs text-foreground-muted">
+                      {active.detailText}
+                    </p>
                   </div>
                 )}
                 {queueWithoutActive.map((job) => (
@@ -678,7 +692,9 @@ export function ActivityEmbedding({
                     key={`full-queue-${job.id}`}
                     className="rounded-2xl border border-border bg-surface-muted p-3"
                   >
-                    <p className="text-sm font-semibold text-foreground">{job.name}</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {job.name}
+                    </p>
                     <p className="mt-1 text-xs text-foreground-muted">In queue</p>
                   </div>
                 ))}
@@ -695,8 +711,12 @@ export function ActivityEmbedding({
             <div className="rounded-3xl border border-border bg-surface-elevated p-4">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Embedding history</p>
-                  <p className="text-xs text-foreground-muted">History of recently processed items.</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    Embedding history
+                  </p>
+                  <p className="text-xs text-foreground-muted">
+                    History of recently processed items.
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -714,7 +734,9 @@ export function ActivityEmbedding({
                       key={job.id}
                       className="rounded-2xl border border-border bg-surface-muted p-3"
                     >
-                      <p className="text-sm font-semibold text-foreground">{job.name}</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {job.name}
+                      </p>
                       <p className="mt-1 text-xs text-foreground-muted">
                         Embedded in {job.durationLabel}
                       </p>
@@ -728,6 +750,7 @@ export function ActivityEmbedding({
           </li>
         )}
       </ul>
+
       {!showFull && onViewAll && (
         <div className="mt-4">
           <button
@@ -740,6 +763,14 @@ export function ActivityEmbedding({
           </button>
         </div>
       )}
-    </Wrapper>
+    </>
+  );
+
+  return showFull ? (
+    content
+  ) : (
+    <section className="mt-2" aria-labelledby="activity-heading">
+      {content}
+    </section>
   );
 }

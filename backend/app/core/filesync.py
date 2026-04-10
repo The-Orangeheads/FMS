@@ -55,7 +55,7 @@ class fileSync:
                 await self.safe_wait(await self.get_current_sync_thread())
 
                 elapsed = asyncio.get_event_loop().time() - start
-                await asyncio.sleep(max(0, settings.auto_sync_interval_seconds - elapsed))
+                await asyncio.sleep(max(0, settings.sync_interval*60 - elapsed))
         except asyncio.CancelledError:
             pass
     def __init__(self):
@@ -244,7 +244,7 @@ class fileSync:
                     #! TIME BOMB PREVENTION SQUAD: uncommnet, uncommen, comment (next 3 lines) if you don't have models
                     # print(f"Processing: {path}")
                     # await asyncio.sleep(2)
-                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, notify_cb=self.sync_notify))
+                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, clear_last=True, notify_cb=self.sync_notify))
 
                     duration = round(loop.time() - start_time, 3)
 
@@ -268,9 +268,7 @@ class fileSync:
                         "error": str(e)
                     }))
         
+            file_handler.clear_last_model()
+            await ws_manager.broadcast(json.dumps({"type": "SYNC_COMPLETE"}))
         except asyncio.CancelledError:
             return
-        
-        await ws_manager.broadcast(json.dumps({"type": "SYNC_COMPLETE"}))
-
-    
