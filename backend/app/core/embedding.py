@@ -205,15 +205,29 @@ class BGEM3Model(EmbeddingModelInterface):
         
 
 class CrossEncoderReranker:
+
+    MAX_LENGTH = 1024
+    
     def __init__(self):
-        self.model = CrossEncoder("BAAI/bge-reranker-v2-m3",
-                                max_length=512,
-                                activation_fn=torch.nn.Sigmoid()
-                    )
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = CrossEncoder("BAAI/bge-reranker-v2-m3", device=self._device)
+        
         
     def rerank(self, query: str, candidates: List) -> list:
-        pairs = [[query, c] for c in candidates]
-        scores = self.model.predict(pairs)
-        return scores.tolist() if hasattr(scores, 'tolist') else list(scores)
-    
+        if not candidates:
+            return []
+        features = self.model.tokenizer(
+            [query] * len(candidates),
+            candidates,
+            padding=True,
+            truncation=True,
+            max_length=self.MAX_LENGTH,
+            return_tensors="pt"
+        ).to(self._device)
+        with torch.no_grad():
+            logits = self.model.model(**features).logits.squeeze(-1)
+            
+        return logits.tolist()   # raw logits, no sigmoid
+
+
 reranker = CrossEncoderReranker()
