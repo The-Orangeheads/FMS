@@ -15,6 +15,54 @@ const IMG_MODELS = [
   "auto",
   "siglip2"
 ];
+const SETTINGS_STORAGE_KEY = "sfm-settings";
+
+type Settings = {
+  syncInterval: number;
+  topK: number;
+  chunkingStrategy: "recursive" | "fixed";
+  chunkSize: number;
+  overlap: number;
+  batch: number;
+  docModel: string;
+  imgModel: string;
+  keepModelsInMemory: boolean;
+  pdfComplexityThreshold: number;
+};
+
+const DEFAULT_SETTINGS: Settings = {
+  syncInterval: 1,
+  topK: 8,
+  chunkingStrategy: "recursive",
+  chunkSize: 500,
+  overlap: 50,
+  batch: 1,
+  docModel: DOC_MODELS[0],
+  imgModel: IMG_MODELS[0],
+  keepModelsInMemory: false,
+  pdfComplexityThreshold: 9,
+};
+
+function loadFrontendSettings(): Settings {
+  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+  const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+  if (!raw) return DEFAULT_SETTINGS;
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function persistFrontendSettings(settings: Settings) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+}
 
 const electron = (window as any).require
   ? (window as any).require("electron")
@@ -23,54 +71,64 @@ const electron = (window as any).require
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const titleId = useId();
   const { theme, setTheme } = useTheme();
-  const [syncInterval, setSyncInterval] = useState(() => {
-    const stored = window.localStorage.getItem("shelf-sync-interval");
-    return stored ? parseInt(stored, 10) : 1;
-  });
-  const [topK, setTopK] = useState(8);
+  const initialSettings = loadFrontendSettings();
+  const [syncInterval, setSyncInterval] = useState(initialSettings.syncInterval);
+  const [topK, setTopK] = useState(initialSettings.topK);
   const [chunkingStrategy, setChunkingStrategy] = useState<
     "recursive" | "fixed"
-  >("recursive");
-  const [chunkSize, setChunkSize] = useState(500);
-  const [overlap, setOverlap] = useState(50);
-  const [batch, setBatch] = useState(1);
-  const [docModel, setDocModel] = useState(DOC_MODELS[0]);
-  const [imgModel, setImgModel] = useState(IMG_MODELS[0]);
-  const [keepModelsInMemory, setKeepModelsInMemory] = useState(false);
-  const [pdfComplexityThreshold, setPdfComplexityThreshold] = useState(9);
+  >(initialSettings.chunkingStrategy);
+  const [chunkSize, setChunkSize] = useState(initialSettings.chunkSize);
+  const [overlap, setOverlap] = useState(initialSettings.overlap);
+  const [batch, setBatch] = useState(initialSettings.batch);
+  const [docModel, setDocModel] = useState(initialSettings.docModel);
+  const [imgModel, setImgModel] = useState(initialSettings.imgModel);
+  const [keepModelsInMemory, setKeepModelsInMemory] = useState(
+    initialSettings.keepModelsInMemory,
+  );
+  const [pdfComplexityThreshold, setPdfComplexityThreshold] = useState(
+    initialSettings.pdfComplexityThreshold,
+  );
   const [dirs, setDirs] = useState<string[]>([]);
   const [dirsLoading, setDirsLoading] = useState(false);
 
   // Store committed values to reset on cancel
-  const [committedValues, setCommittedValues] = useState({
-    syncInterval: 1,
-    topK: 8,
-    chunkingStrategy: "recursive" as "recursive" | "fixed",
-    chunkSize: 500,
-    overlap: 50,
-    batch: 1,
-    docModel: DOC_MODELS[0],
-    imgModel: IMG_MODELS[0],
-    keepModelsInMemory: false,
-    pdfComplexityThreshold: 9,
-  });
+  const [committedValues, setCommittedValues] = useState(initialSettings);
 
   const loadSettings = async () => {
+    const localSettings = loadFrontendSettings();
+
+    setCommittedValues(localSettings);
+    setSyncInterval(localSettings.syncInterval);
+    setTopK(localSettings.topK);
+    setChunkingStrategy(localSettings.chunkingStrategy);
+    setChunkSize(localSettings.chunkSize);
+    setOverlap(localSettings.overlap);
+    setBatch(localSettings.batch);
+    setDocModel(localSettings.docModel);
+    setImgModel(localSettings.imgModel);
+    setKeepModelsInMemory(localSettings.keepModelsInMemory);
+    setPdfComplexityThreshold(localSettings.pdfComplexityThreshold);
+
     try {
       const response = await fetch("http://localhost:8000/api/config/");
       if (response.ok) {
         const data = await response.json();
-        const newValues = {
-          syncInterval: data.sync_interval ?? 1,
-          topK: data.top_k ?? 8,
-          chunkingStrategy: (data.chunk_strategy ?? "recursive") as "recursive" | "fixed",
-          chunkSize: data.chunk_size ?? 500,
-          overlap: data.chunk_overlap ?? 50,
-          batch: data.batch_size ?? 1,
-          docModel: data.cur_text_embedding_model ?? DOC_MODELS[0],
-          imgModel: data.cur_image_embedding_model ?? IMG_MODELS[0],
-          keepModelsInMemory: data.keep_models_in_memory ?? false,
-          pdfComplexityThreshold: data.pdf_complexity_threshold ?? 9,
+        const newValues: Settings = {
+          syncInterval: data.sync_interval ?? localSettings.syncInterval,
+          topK: data.top_k ?? localSettings.topK,
+          chunkingStrategy:
+            (data.chunk_strategy ?? localSettings.chunkingStrategy) as
+              | "recursive"
+              | "fixed",
+          chunkSize: data.chunk_size ?? localSettings.chunkSize,
+          overlap: data.chunk_overlap ?? localSettings.overlap,
+          batch: data.batch_size ?? localSettings.batch,
+          docModel: data.cur_text_embedding_model ?? localSettings.docModel,
+          imgModel: data.cur_image_embedding_model ?? localSettings.imgModel,
+          keepModelsInMemory:
+            data.keep_models_in_memory ?? localSettings.keepModelsInMemory,
+          pdfComplexityThreshold:
+            data.pdf_complexity_threshold ?? localSettings.pdfComplexityThreshold,
         };
         setCommittedValues(newValues);
         setSyncInterval(newValues.syncInterval);
@@ -83,6 +141,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setImgModel(newValues.imgModel);
         setKeepModelsInMemory(newValues.keepModelsInMemory);
         setPdfComplexityThreshold(newValues.pdfComplexityThreshold);
+        persistFrontendSettings(newValues);
       }
     } catch (err) {
       console.error("Failed to load settings:", err);
@@ -179,6 +238,21 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   };
 
   const handleSaveChanges = async () => {
+    const settings: Settings = {
+      syncInterval,
+      topK,
+      chunkingStrategy,
+      chunkSize,
+      overlap,
+      batch,
+      docModel,
+      imgModel,
+      keepModelsInMemory,
+      pdfComplexityThreshold,
+    };
+
+    persistFrontendSettings(settings);
+
     await fetch("http://localhost:8000/api/config/", {
       method: "POST",
       headers: {
@@ -197,19 +271,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         pdf_complexity_threshold: pdfComplexityThreshold,
       }),
     });
+
     // Update committed values to the new saved state
-    setCommittedValues({
-      syncInterval,
-      topK,
-      chunkingStrategy,
-      chunkSize,
-      overlap,
-      batch,
-      docModel,
-      imgModel,
-      keepModelsInMemory,
-      pdfComplexityThreshold,
-    });
+    setCommittedValues(settings);
     onClose();
   };
 
@@ -360,10 +424,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               max={60}
               step={1}
               value={syncInterval}
-              onChange={(val) => {
-                setSyncInterval(val);
-                window.localStorage.setItem("shelf-sync-interval", String(val));
-              }}
+              onChange={setSyncInterval}
             />
             <SliderField
               label="Top K"
