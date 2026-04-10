@@ -2,7 +2,6 @@ from typing import List
 from app.schemas import ChunkInput, EmbeddingOutput, EmbeddingResponse
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from transformers import AutoModel, AutoProcessor
-from FlagEmbedding import BGEM3FlagModel
 import torch
 from PIL import Image
 import io
@@ -269,52 +268,19 @@ class SiglipModel(EmbeddingModelInterface):
             self.currently_embedding -= 1
 
         return embeddings
-    
-
-class BGEM3Model(EmbeddingModelInterface):
-    def __init__(self, model_id: str):
-        self.model = BGEM3FlagModel(model_id, use_fp16=torch.cuda.is_available(), device="cuda" if torch.cuda.is_available() else "cpu")
-
-    def free_vram(self):
-        pass
-    
-    def load_on_vram(self):
-        pass
-
-    def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
-        """Returns dense embeddings."""
-        texts = [c.text.strip() for c in chunks]
-        output = self.model.encode(texts, return_dense=True, return_sparse=False, return_colbert_vecs=False)
-        return output['dense_vecs'].tolist()
-
-    # N: number of candidates, Lq = query length, Lc = candidate length
-    def compute_hybrid_score(self, query: str, candidates: List[str]) -> dict:
-        """Returns hybrid scores for search/reranking."""
-        
-        
-        if not candidates:
-            return {'colbert+sparse+dense': []}
-        
-        pairs = [[query, c] for c in candidates] # N
-        return self.model.compute_score(
-            pairs,
-            max_passage_length=500, # Lc
-            weights_for_different_modes=[0.3, 0.3, 0.4]  # dense: N*Lc*Lc, sparse: N*Lq*Lc, colbert: N*Lq*Lc
-        )
-        
 
 class CrossEncoderReranker:
 
     MAX_LENGTH = 1024
     
     def __init__(self):
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._device = "cpu"
         self.model = CrossEncoder("BAAI/bge-reranker-v2-m3", device=self._device)
-        
-        
+    
     def rerank(self, query: str, candidates: List) -> list:
         if not candidates:
             return []
+        
         features = self.model.tokenizer(
             [query] * len(candidates),
             candidates,

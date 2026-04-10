@@ -504,7 +504,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               label="Chunking size"
               description="Target token length per chunk for text indexing."
               min={100}
-              max={2000}
+              max={10000}
               step={50}
               value={chunkSize}
               onChange={setChunkSize}
