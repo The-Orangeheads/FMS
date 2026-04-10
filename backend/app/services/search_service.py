@@ -9,6 +9,11 @@ DISPLAY_SHIFT = -5.0   # logit at which you want to show ~50%
 DISPLAY_TEMP  =  1.5   # spread of the display curve
 LOGIT_FLOOR = -9.5
 
+
+# how many characters of each candidate to use
+# in the reranker input (longer may give better scores but costs more)
+MAX_CANDIDATE_CHARS = 800 
+
 class SearchService:
     def __init__(self, collection, threshold, top_k):
         self.collection = collection
@@ -36,7 +41,7 @@ class SearchService:
         for r in unique:
             filename = os.path.basename(r["metadata"].get("path", ""))
             candidates.append(f"[{filename}]\n{r['document']}")
-        candidates = [r["document"][:800] for r in unique]
+        candidates = [r["document"][:MAX_CANDIDATE_CHARS] for r in unique]
         metadata   = [r["metadata"] for r in unique]
         # model = embedding_service._get_model("bge-m3")
         # scores = model.compute_hybrid_score(query, candidates)

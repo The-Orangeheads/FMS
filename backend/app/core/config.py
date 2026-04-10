@@ -39,13 +39,14 @@ class Settings(BaseSettings):
     cur_image_embedding_model: str = "auto"
     chunk_strategy: str = "recursive"
     batch_size: int = 1
-    top_k: int = 10
+    top_k: int = 8
     chunk_size: int = 500
     chunk_overlap: int = 50
+    pdf_complexity_threshold: int = 9
+    sync_interval : float = 1 # IN MINUTES
+    keep_models_in_memory: bool = False
     include_metadata: bool = True
-    pdf_complexity_threshold: int = 15
-    auto_sync_interval_seconds: float = 60
-    search_threshold: float = 0.0
+    search_threshold: float = 15.0
 
     class Config:
         """Pydantic config."""

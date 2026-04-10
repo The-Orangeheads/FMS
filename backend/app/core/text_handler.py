@@ -2,11 +2,11 @@ import fitz
 import pdfplumber
 import pandas as pd
 from typing import List, Tuple, Optional, Dict
+from app.core.config import settings
 import os
 
 class PDFTextHandler:
-    def __init__(self, complexity_threshold: int = 10):
-        self.complexity_threshold = complexity_threshold
+    def __init__(self):
         self._pending_table_df: Optional[pd.DataFrame] = None 
 
     def blocks_complexity_score(self, page, debug_text: bool = False):
@@ -186,7 +186,7 @@ class PDFTextHandler:
             if valid_images:
                 page_content += "\n".join(valid_images) + "\n"
 
-            if score > self.complexity_threshold:
+            if score > settings.pdf_complexity_threshold:
                 text, tables = self._extract_complex(file_path, i)
                 for table_df in tables:
                     if self._pending_table_df is not None:

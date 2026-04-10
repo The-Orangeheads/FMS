@@ -9,6 +9,7 @@ import io
 import math
 import base64
 import os
+import threading
 
 from app.core.config import settings
 
@@ -27,7 +28,12 @@ class EmbeddingModelInterface:
     """Base class to enforce a common structure for all model recipes."""
     def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
         raise NotImplementedError
-
+    
+    def free_vram(self):
+        raise NotImplementedError
+    
+    def load_on_vram(self):
+        raise NotImplementedError
 # --- RECIPE 1: Standard Sentence Transformers (Text Only) ---
 class SBERTModel(EmbeddingModelInterface):
     """
@@ -38,8 +44,39 @@ class SBERTModel(EmbeddingModelInterface):
     """
     def __init__(self, model_name: str):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = SentenceTransformer(model_name, device=self.device)
-        print(f"SBERT Model loaded on device: {self.device}")
+
+        if settings.keep_models_in_memory:
+            self.model = SentenceTransformer(model_name, device=self.device)
+            self.on_vram = (self.device == "cuda")
+        else:
+            self.model = SentenceTransformer(model_name, device="cpu")
+            self.on_vram = False
+            
+        print(f"SBERT Model loaded on device: {'cuda' if self.on_vram else 'cpu'}")
+        self.vram_lock = threading.Lock()
+        self.currently_embedding = 0
+
+    def free_vram(self):
+        if self.device != "cuda" or settings.keep_models_in_memory:
+            return
+        with self.vram_lock:
+            if (not self.on_vram) or (self.currently_embedding > 0):
+                return
+            
+            self.model = self.model.to("cpu")
+            torch.cuda.empty_cache()
+            self.on_vram = False
+            print(f"SBERT Model loaded on device: cpu")
+            
+    def load_on_vram(self):
+        if self.device != "cuda":
+            return
+        with self.vram_lock:
+            if self.on_vram:
+                return
+            self.model = self.model.to("cuda")
+            self.on_vram = True
+            print(f"SBERT Model loaded on device: cuda")
 
     """
     This is the function from the interface above, we override it here. It takes a list of chunks
@@ -47,6 +84,15 @@ class SBERTModel(EmbeddingModelInterface):
     so that's why we extract the chunks' text into a variable called texts.
     """
     def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
+        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
+
+        if notify_cb:
+            notify_cb(f"Loading Embedding Model... : {file_name} : 10")
+        
+        with self.vram_lock:
+            self.currently_embedding += 1
+        self.load_on_vram()
+
         texts = [c.text if hasattr(c, 'text') else str(c) for c in chunks]
         if not texts:
             return []
@@ -73,10 +119,8 @@ class SBERTModel(EmbeddingModelInterface):
         total_batches = math.ceil(len(sorted_texts) / batch_size)
         sorted_embds = []
 
-        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
-        
         if notify_cb:
-            notify_cb(f"Embedded 0 batches out of {total_batches}: {file_name} : 10")
+            notify_cb(f"Embedded 0 batches out of {total_batches}: {file_name} : 15")
 
         for batch_index, i in enumerate(range(0, len(sorted_texts), batch_size), start=1):
             cur_batch = sorted_texts[i : i + batch_size]
@@ -90,13 +134,16 @@ class SBERTModel(EmbeddingModelInterface):
             sorted_embds.extend(batch_embeddings.cpu().tolist())
             
             if notify_cb:
-                percentage = 10 + round(batch_index/total_batches * 85)
+                percentage = 15 + round(batch_index/total_batches * 80)
                 notify_cb(f"Embedded {batch_index} batches out of {total_batches}: {file_name} : {percentage}")
             
         # Restore the original batches order
         ordered_embds = [None] * len(texts)
         for sorted_pos, original_idx in enumerate(sorted_idxs):
             ordered_embds[original_idx] = sorted_embds[sorted_pos]
+
+        with self.vram_lock:
+            self.currently_embedding -= 1
 
         return ordered_embds
 
@@ -111,11 +158,42 @@ class SiglipModel(EmbeddingModelInterface):
     def __init__(self, model_id: str):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.processor = AutoProcessor.from_pretrained(model_id)
-        self.model = AutoModel.from_pretrained(model_id).to(self.device).eval()
-        print(f"Siglip Model loaded on device: {self.device}")
+
+        if settings.keep_models_in_memory:
+            self.model = AutoModel.from_pretrained(model_id).to(self.device).eval()
+            self.on_vram = (self.device == "cuda")
+        else:
+            self.model = AutoModel.from_pretrained(model_id).to("cpu").eval()
+            self.on_vram = False
+            
+        print(f"SigLip Model loaded on device: {'cuda' if self.on_vram else 'cpu'}")
+        self.vram_lock = threading.Lock()
+        self.currently_embedding = 0
 
         self.logit_scale = self.model.logit_scale.exp().item()
         self.logit_bias = self.model.logit_bias.item()
+
+    def free_vram(self):
+        if self.device != "cuda" or settings.keep_models_in_memory:
+            return
+        with self.vram_lock:
+            if (not self.on_vram) or (self.currently_embedding > 0):
+                return
+            
+            self.model = self.model.to("cpu")
+            torch.cuda.empty_cache()
+            self.on_vram = False
+            print(f"SigLip Model loaded on device: cpu")
+            
+    def load_on_vram(self):
+        if self.device != "cuda":
+            return
+        with self.vram_lock:
+            if self.on_vram:
+                return
+            self.model = self.model.to("cuda")
+            self.on_vram = True
+            print(f"SigLip Model loaded on device: cuda")
     
     def _to_embedding_tensor(self, outputs):
         """
@@ -145,8 +223,20 @@ class SiglipModel(EmbeddingModelInterface):
 
     @torch.no_grad()
     def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
+        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
+        
+        if notify_cb:
+            notify_cb(f"Loading Embedding Model... : {file_name} : 25")
+        
+        with self.vram_lock:
+            self.currently_embedding += 1
+        self.load_on_vram()
+
         embeddings: List[List[float]] = []
 
+        if notify_cb:
+            notify_cb(f"Embedding image... : {file_name} : 35")
+        
         for chunk in chunks:
             if chunk.image_base64:
                 image_data = base64.b64decode(chunk.image_base64)
@@ -175,12 +265,21 @@ class SiglipModel(EmbeddingModelInterface):
 
             embeddings.append(vec.squeeze(0).cpu().tolist())
 
+        with self.vram_lock:
+            self.currently_embedding -= 1
+
         return embeddings
     
 
 class BGEM3Model(EmbeddingModelInterface):
     def __init__(self, model_id: str):
         self.model = BGEM3FlagModel(model_id, use_fp16=torch.cuda.is_available(), device="cuda" if torch.cuda.is_available() else "cpu")
+
+    def free_vram(self):
+        pass
+    
+    def load_on_vram(self):
+        pass
 
     def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
         """Returns dense embeddings."""

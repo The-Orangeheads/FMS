@@ -251,7 +251,7 @@ export function StorageDonut({ usedTotalLabel, analytics }: StorageDonutProps) {
 
       <div className="space-y-2 rounded-3xl bg-surface-muted p-3 text-sm">
         <div className="flex items-center justify-between gap-3">
-          <span className="font-semibold text-foreground">Embedding progress</span>
+          <span className="font-semibold text-foreground">Tracked Files</span>
           <span className="font-medium tabular-nums text-foreground">{overallProgress}%</span>
         </div>
         <div className="h-2.5 overflow-hidden rounded-full bg-surface-elevated">
