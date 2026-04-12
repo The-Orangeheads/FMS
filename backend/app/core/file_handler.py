@@ -9,6 +9,7 @@ from pathlib import Path
 from app.core.text_handler import PDFTextHandler
 from app.core.chunker import ChunkingService
 from app.core.config import settings
+from app.core.ocr import ocr
 from app.services.embedding_service import embedding_service
 from app.services.files_db_service import files_db_service
 
@@ -62,9 +63,11 @@ class FileHandler:
 
         ext = Path(path).suffix.lower()
         extracted_pages = []
+        extracted_images = []
         
         if ext == ".pdf":
-            extracted_pages = self.pdf_handler.process_document(path)
+            extracted_pages, extracted_images = self.pdf_handler.process_document(path)
+            ocr.free_vram()
         elif ext == ".txt":
             with open(path, "r", encoding="utf-8") as f:
                 extracted_pages = [{"page_number": 1, "text": f.read()}]
@@ -142,7 +145,68 @@ class FileHandler:
             mdate=stat.st_mtime_ns,
             fsize=stat.st_size
         )
+
+        self.clear_last_model()
+
+        if extracted_images:
+
+            target_model = (
+                settings.DEFAULT_IMAGE_EMBEDDING_MODEL 
+                if settings.cur_image_embedding_model == "auto" 
+                else settings.cur_image_embedding_model
+            )
+
+            self.last_model = target_model
+
+            chunksList = []
+
+            for img in extracted_images:
+                chunksList.append(ChunkInput(text=None, 
+                                            image_base64=img["base64"], 
+                                            metadata={"path": path, "page_number": img["page_number"]}))
+
+            image_embedding_response = embedding_service.process_embeddings(target_model, chunksList, notify_cb)
+
+            img_embeddings = []
+            img_contents = []
+            img_metadatas = []
+
+            for idx, item in enumerate(image_embedding_response.results):
+                img_embeddings.append(item.vector)
+                img_contents.append(None)
+                img_metadatas.append({
+                    "path": path,
+                    "page_number": extracted_images[idx]["page_number"],
+                    "mdate": stat.st_mtime_ns,
+                    "fsize": stat.st_size
+                })
+
+            files_db_service.save_file(
+                    embeddings=img_embeddings,
+                    contents=img_contents,
+                    metadatas=img_metadatas,
+                    file_path=path,
+                    file_type="image",
+                    mdate=stat.st_mtime_ns,
+                    fsize=stat.st_size
+                )
+            
+            self.clear_last_model()
+
     
+    # This is standalone image processing
+    """
+    We'll divide this process into 3 phases, the aim
+    of this is to decrease the vram usage as much as possible
+
+    Phase 1: Visual Embedding (Embedding using SigLip2 and storing then unloading Model)
+    Phase 2: OCR Text Extraction (Loading the OCR backend and extracting the text and unloading the OCR)
+    Phase 3: Loading the text model embedding and unloading the model
+
+    // This can potentially make a problem, since this means
+    // at some point in time we'll have about 4 models lying
+    // in the actual ram.
+    """
     def process_image(self, path: str, notify_cb=None):
         logger.info(f"Processing image file: {path}")
         file_name = os.path.basename(path)
@@ -152,7 +216,9 @@ class FileHandler:
             if settings.cur_image_embedding_model == "auto" 
             else settings.cur_image_embedding_model
         )
-
+        """
+        Phase 1 (Siglip)
+        """
         self.last_model = target_model
         
         # 1. Read and Encode Image to Base64
@@ -204,6 +270,91 @@ class FileHandler:
                 mdate=stat.st_mtime_ns,
                 fsize=stat.st_size
             )
+        
+        self.clear_last_model()
+
+        """
+        Phase 2 (OCR)
+        """
+        if not getattr(settings, "enable_ocr", True):
+            logger.info(f"[file_handler] OCR disabled — skipping text extraction for {file_name}")
+            return
+
+        # Update Notify CB accordingly later
+
+        ocr_text = ocr.extract_text(image_bytes)
+        ocr.free_vram()
+
+        min_len = getattr(settings, "ocr_min_text_length", 10)
+
+        if not ocr_text or len(ocr_text.strip()) < min_len:
+            logger.info(f"[file_handler] No meaningful OCR text in {file_name} — skipping text embedding")
+            return
+        
+        """
+        Phase 3 (Text Model)
+        """
+        # Update Notify CB // Not done yet
+
+        target_model = (
+                settings.DEFAULT_TEXT_EMBEDDING_MODEL
+                if settings.cur_text_embedding_model == "auto"
+                else settings.cur_text_embedding_model
+            )
+
+        self.last_model = target_model
+
+        resulting_chunks = self.chunker.chunk_document([{"page_number": 1, "text": ocr_text}])
+
+        valid_chunks = []
+        valid_inputs = []
+
+        for chunk in resulting_chunks:
+            clean_text = " ".join(chunk['text'].split())
+            
+            # Only keep chunks that have actual alphanumeric characters and are longer than 5 chars
+            if len(clean_text) > 5 and any(char.isalnum() for char in clean_text):
+                valid_inputs.append(ChunkInput(
+                    text=clean_text,
+                    metadata={"path": path}
+                ))
+                valid_chunks.append(chunk)
+
+        if not valid_inputs:
+            logger.warning(f"File {path} resulted in 0 valid chunks after filtering. (In OCR)")
+            return {"status": "skipped", "message": "No meaningful text found in file."}
+
+        toEmbedd = embedding_service.process_embeddings(target_model, valid_inputs, notify_cb)
+        
+        embeddings = []
+        contents = []
+        metadatas = []
+        
+        for idx, item in enumerate(toEmbedd.results):
+            # Use valid_raw_chunks instead of result_chunks to keep indices aligned
+            text_content = valid_chunks[idx]['text']
+            page_number = valid_chunks[idx]['page_number']
+            embeddings.append(item.vector)
+            contents.append(text_content)
+            metadatas.append({
+                "path": path,
+                "page_number": page_number,
+                "mdate": stat.st_mtime_ns,
+                "fsize": stat.st_size
+            })
+        
+        files_db_service.save_file(
+            embeddings=embeddings,
+            contents=contents,
+            metadatas=metadatas,
+            file_path=path,
+            file_type="document",
+            mdate=stat.st_mtime_ns,
+            fsize=stat.st_size
+        )
+
+        self.clear_last_model()
+
 
     def clear_last_model(self):
         if not self.last_model:

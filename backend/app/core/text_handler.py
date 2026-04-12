@@ -3,6 +3,8 @@ import pdfplumber
 import pandas as pd
 from typing import List, Tuple, Optional, Dict
 from app.core.config import settings
+from app.core.ocr import ocr
+import base64
 import os
 
 class PDFTextHandler:
@@ -150,16 +152,29 @@ class PDFTextHandler:
         df = df.replace(r'\n', ' ', regex=True)
         return df.to_markdown(index=False)
 
-    def _extract_images(self, page: fitz.Page) -> List[str]:
+    def _extract_images(self, page: fitz.Page) -> List[Dict]:
         image_list = page.get_images(full=True)
-        valid_images = []
+        page_images_data = []
         for img in image_list:
             xref = img[0]
             base_image = page.parent.extract_image(xref)
             if base_image["width"] < 50 or base_image["height"] < 50:
                 continue
-            valid_images.append(f"[Image: {base_image['width']}x{base_image['height']}]")
-        return valid_images
+
+            image_bytes = base_image["image"]
+            ocr_text = ocr.extract_text(image_bytes)
+            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+
+            min_len = getattr(settings, "ocr_min_text_length", 10)
+
+            res = ocr_text
+
+            if not ocr_text or len(ocr_text.strip()) < min_len:
+                res = ""
+
+            page_images_data.append({"text": res, "base64": image_b64})
+
+        return page_images_data
 
     def _extract_complex(self, pdf_path: str, page_index: int) -> Tuple[str, List[pd.DataFrame]]:
         page_text = []
@@ -174,17 +189,20 @@ class PDFTextHandler:
             page_text.append(p.extract_text() or "")
         return "\n".join(page_text), tables_found
 
-    def process_document(self, file_path: str) -> List[Dict]:
+    def process_document(self, file_path: str) -> Tuple[List[Dict], List[Dict]]:
         doc = fitz.open(file_path)
         extracted_pages = []
+        extracted_images = []
         
         for i, page in enumerate(doc):
             score = self.calculate_page_complexity(page)
             
             page_content = ""
-            valid_images = self._extract_images(page)
-            if valid_images:
-                page_content += "\n".join(valid_images) + "\n"
+            image_data_list = self._extract_images(page)
+            for img_data in image_data_list:
+                page_content += img_data["text"] + "\n"
+                extracted_images.append({"page_number": i + 1, 
+                                         "base64": img_data["base64"]})
 
             if score > settings.pdf_complexity_threshold:
                 text, tables = self._extract_complex(file_path, i)
@@ -213,4 +231,4 @@ class PDFTextHandler:
              extracted_pages[-1]["text"] += "\n" + self._df_to_markdown(self._pending_table_df) + "\n"
 
         doc.close()
-        return extracted_pages
+        return extracted_pages, extracted_images

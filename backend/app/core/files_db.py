@@ -116,13 +116,17 @@ class FilesDB:
 
     def save_file(self, embeddings: list[list[float]], contents: list[str | None], metadatas: list[dict[str, Any]], file_path: str, file_type: str, mdate: int, fsize: int):
         # insert in FILES_TABLE (file_path, file_type, NULL, NULL")
-        self.cursor.execute(
-            f"INSERT INTO {self.FILES_TABLE} "
-            f"(file_path, file_type, embd_signature, dd_signature, mdate, file_size) "
-            f"VALUES (?, ?, NULL, NULL, ?, ?)",
-            (file_path, file_type, mdate, fsize),
-        )
-        file_id = self.cursor.lastrowid
+
+        file_id = self._get_file_id(file_path)
+
+        if file_id is None:
+            self.cursor.execute(
+                f"INSERT INTO {self.FILES_TABLE} "
+                f"(file_path, file_type, embd_signature, dd_signature, mdate, file_size) "
+                f"VALUES (?, ?, NULL, NULL, ?, ?)",
+                (file_path, file_type, mdate, fsize),
+            )
+            file_id = self.cursor.lastrowid
 
         # if file type == "image" use images_db_service, else use documents_db_service 
         # insert embeddings, contents, metadatas in chroma
@@ -186,17 +190,23 @@ class FilesDB:
                 """,
                 batch,
             )
+
+            all_chroma_ids = [row[0] for row in self.cursor.fetchall() if row[0] is not None]
+
+            if all_chroma_ids:
+                documents_db_service.delete(all_chroma_ids)
+                images_db_service.delete(all_chroma_ids)
             
-            for embd_id, file_type in self.cursor.fetchall():
-                if embd_id is None:
-                    continue
-                chroma_ids[1 if file_type == "image" else 0].append(embd_id)
+        #     for embd_id, file_type in self.cursor.fetchall():
+        #         if embd_id is None:
+        #             continue
+        #         chroma_ids[1 if file_type == "image" else 0].append(embd_id)
         
-        if chroma_ids[0]:
-            documents_db_service.delete(chroma_ids[0])
+        # if chroma_ids[0]:
+        #     documents_db_service.delete(chroma_ids[0])
         
-        if chroma_ids[1]:
-            images_db_service.delete(chroma_ids[1])
+        # if chroma_ids[1]:
+        #     images_db_service.delete(chroma_ids[1])
         
         # # erase all from EMBEDDING_IDS_TABLE where id = ids
         # for batch in batched_ids:
