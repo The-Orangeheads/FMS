@@ -2,7 +2,7 @@ from app.services.embedding_service import embedding_service
 from app.services.vector_db_service import documents_db_service
 from app.core.config import settings
 from app.core.embedding import reranker
-import math, os
+import math, os, time
 
 
 DISPLAY_SHIFT = -5.0   # logit at which you want to show ~50%
@@ -41,7 +41,10 @@ class SearchService:
         metadata   = [r["metadata"] for r in unique]
         # model = embedding_service._get_model("bge-m3")
         # scores = model.compute_hybrid_score(query, candidates)
+            
+        t0 = time.time()
         logits = reranker.rerank(query, candidates)
+        print(f"Reranker: {len(candidates)} candidates in {time.time() - t0:.2f}s")
         
         reranked = []
         for i in range(len(candidates)):
