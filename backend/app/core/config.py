@@ -20,18 +20,6 @@ class Settings(BaseSettings):
     # === EMBEDDING MODELS ===
     DEFAULT_TEXT_EMBEDDING_MODEL: str = "bge-m3"
     DEFAULT_IMAGE_EMBEDDING_MODEL: str = "siglip2"
-    DEFAULT_BATCH_SIZE: int = 1
-    
-    # === FILE HANDLING ===
-    MAX_FILE_SIZE_MB: int = 50
-    
-    # === DUPLICATE DETECTION ===
-    SIMILARITY_THRESHOLD: float = 0.95
-    DBSCAN_EPS: float = 0.1
-    DBSCAN_MIN_SAMPLES: int = 2
-
-    # === DUPLICATE DETECTION ===
-
 
     # =========================== SETTINGS ===========================
 
@@ -47,7 +35,8 @@ class Settings(BaseSettings):
     keep_models_in_memory: bool = False
     include_metadata: bool = True
     search_threshold: float = 0.1
-
+    similarity_threshold: float = 0.9
+    
     class Config:
         """Pydantic config."""
         env_file = os.path.join(os.getcwd(), ".env")

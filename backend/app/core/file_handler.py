@@ -9,8 +9,8 @@ from pathlib import Path
 from app.core.text_handler import PDFTextHandler
 from app.core.chunker import ChunkingService
 from app.core.config import settings
-from app.services import vector_db_service
 from app.services.embedding_service import embedding_service
+from app.services.files_db_service import files_db_service
 
 from app.schemas import ChunkInput
 
@@ -116,20 +116,32 @@ class FileHandler:
         if notify_cb:
             notify_cb(f"Storing embeddings... : {file_name} : 95")
 
+        embeddings = []
+        contents = []
+        metadatas = []
+        
         for idx, item in enumerate(embedded_data.results):
             # Use valid_raw_chunks instead of result_chunks to keep indices aligned
             text_content = valid_chunks[idx]['text']
             page_number = valid_chunks[idx]['page_number']
-            vector_db_service.documents_db_service.insert(
-                embedding=item.vector,
-                file_path=path,
-                content=text_content,
-                metadata={
-                    "page_number": page_number,
-                    "mdate": stat.st_mtime_ns,
-                    "fsize": stat.st_size
-                }
-            )
+            embeddings.append(item.vector)
+            contents.append(text_content)
+            metadatas.append({
+                "path": path,
+                "page_number": page_number,
+                "mdate": stat.st_mtime_ns,
+                "fsize": stat.st_size
+            })
+        
+        files_db_service.save_file(
+            embeddings=embeddings,
+            contents=contents,
+            metadatas=metadatas,
+            file_path=path,
+            file_type="document",
+            mdate=stat.st_mtime_ns,
+            fsize=stat.st_size
+        )
     
     def process_image(self, path: str, notify_cb=None):
         logger.info(f"Processing image file: {path}")
@@ -169,17 +181,29 @@ class FileHandler:
 
         if notify_cb:
             notify_cb(f"Storing embedding... : {file_name} : 95")
+
+        embeddings = []
+        contents = []
+        metadatas = []
         
-        for idx, item in enumerate(embedded_data.results):
-            vector_db_service.images_db_service.insert(
-                embedding=item.vector,
+        for item in embedded_data.results:
+            embeddings.append(item.vector)
+            contents.append(None)
+            metadatas.append({
+                "path": path,
+                "mdate": stat.st_mtime_ns,
+                "fsize": stat.st_size
+                })
+
+        files_db_service.save_file(
+                embeddings=embeddings,
+                contents=contents,
+                metadatas=metadatas,
                 file_path=path,
-                metadata={
-                    "mdate": stat.st_mtime_ns,
-                    "fsize": stat.st_size
-                }
+                file_type="image",
+                mdate=stat.st_mtime_ns,
+                fsize=stat.st_size
             )
-    
 
     def clear_last_model(self):
         if not self.last_model:

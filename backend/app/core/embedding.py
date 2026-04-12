@@ -1,5 +1,5 @@
 from typing import List
-from app.schemas import ChunkInput, EmbeddingOutput, EmbeddingResponse
+from app.schemas import ChunkInput
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from transformers import AutoModel, AutoProcessor
 import torch
@@ -143,7 +143,7 @@ class SBERTModel(EmbeddingModelInterface):
 
         with self.vram_lock:
             self.currently_embedding -= 1
-
+        
         return ordered_embds
 
 """
