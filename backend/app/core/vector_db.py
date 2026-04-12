@@ -2,12 +2,9 @@
 Vector Database Handler Module
 Handles Database modifications
 """
-import os
-
 import chromadb
 from chromadb.config import Settings as ChromaSettings
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import Any
 import uuid
 
 # 2. ChromaDB Implementation
@@ -26,25 +23,18 @@ class ChromaDBImpl():
             metadata={"hnsw:space": "cosine"}
         )
 
-    def insert(self, embedding: List[float], file_path: str, metadata: Optional[Dict[str, Any]] = None, content: Optional[str] = None):
-        if metadata is not None and len(metadata) == 0:
-            metadata = None
-        else:
-            metadata = metadata or {}
-        
-        metadata["path"] = file_path
-        
-        unique_id = str(uuid.uuid4())
-        # print(f"Inserting: {[unique_id, file_path, metadata]}") #! FOR DEBUGGING, REMOVE LATER
+    def insert(self, ids : list[str], embeddings: list[list[float]], contents: list[str | None], metadatas: list[dict[str, Any]]):
+        if not embeddings:
+            return []
         
         self.collection.add(
-            embeddings=[embedding], 
-            metadatas=[metadata], 
-            ids=[unique_id],
-            documents=[content] if content else None
+            ids=ids,
+            embeddings=embeddings,
+            documents=contents,
+            metadatas=metadatas,
         )
 
-    def query(self, embedding: List[float], k: int) -> List[Dict[str, Any]]:
+    def query(self, embedding: list[float], k: int) -> list[dict[str, Any]]:
         results = self.collection.query(
             query_embeddings=[embedding],
             n_results=k,
@@ -86,6 +76,44 @@ class ChromaDBImpl():
         if not ids:
             return
         self.collection.delete(ids=ids)
+
+    #TODO test if returned distasnces are always sorted or not
+    def query_similarity(self, embedding: list[float], min_similarity: float, min_k: int = 16, max_k: int = 1048576) -> list[dict[str, Any]]:
+        k = min(min_k, max_k)
+        max_dist = 1.0 - min_similarity
+        while(k <= max_k):
+            results = self.collection.query(
+                query_embeddings=[embedding],
+                n_results=k,
+                include=["metadatas", "distances"]
+            )
+            if(float(results['distances'][0][-1]) > max_dist): #TODO try replacing checking last with checking overall minimum
+                break
+            k *= 2
+        
+        dists = results["distances"][0]    # list of distances (cosine distance if collection uses cosine)
+        metas = results["metadatas"][0]
+
+        hits = []
+        for meta, dist in zip(metas, dists):
+            # if metadata was empty, create an object and add file_path from the id
+            meta_out = dict(meta or {})
+            try:
+                score = 1.0 - float(dist)  # convert cosine distance -> similarity
+            except Exception:
+                score = None
+            hits.append({"score": score, "metadata": meta_out})
+
+        return hits
+
+    def get_embeddings(self, ids : list[str]) -> list[list[float]]:
+        if not ids:
+            return
+        results = self.collection.get(
+            ids=["your_id"],
+            include=["embeddings"]
+        )
+        return results["embeddings"]
 # -- Example Usage 
 # db = ChromaDBImpl(data_path="./chroma_storage")
 # db.insert([0.1, 0.2, 0.3], "images/car.jpg")

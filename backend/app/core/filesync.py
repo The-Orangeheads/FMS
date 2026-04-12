@@ -4,10 +4,9 @@ from pathlib import Path
 from app.core.config import settings
 import threading
 import asyncio
-from app.services.vector_db_service import *
 from app.services.file_handler_service import *
 from app.core.websockets import ws_manager
-
+from app.services.files_db_service import files_db_service
 
 class fileSync:
 
@@ -122,12 +121,12 @@ class fileSync:
     def get_outdated(self, cur_state, stored_state) -> list:
         ids_to_rem = []
 
-        for path, val in stored_state.items():
-            key = val[0]
-            ids = val[1]
+        for path, vals in stored_state.items():
+            file_id = vals["file_id"]
+            embd_signature = vals["embd_signature"]
 
-            if path not in cur_state or cur_state[path] != key:
-                ids_to_rem.extend(ids)
+            if path not in cur_state or cur_state[path] != embd_signature:
+                ids_to_rem.append(file_id)
         
         return ids_to_rem
     
@@ -186,19 +185,16 @@ class fileSync:
             
             await self.check_cancel()
 
-            stored_images = images_db_service.get_state()
-            await self.check_cancel()
+            stored_state = files_db_service.get_state()
 
-            stored_docs = documents_db_service.get_state()
             await self.check_cancel()
 
             print("deleting outdated embeddings")
-            images_db_service.delete(self.get_outdated(cur_state, stored_images))
-            await self.check_cancel()
 
-            documents_db_service.delete(self.get_outdated(cur_state, stored_docs))
-            await self.check_cancel()
+            files_db_service.delete_ids(self.get_outdated(cur_state, stored_state))
 
+            await self.check_cancel()
+            
             print("initializing queue")
             paths_to_add = []
             for path, key in cur_state.items():
@@ -210,14 +206,13 @@ class fileSync:
                 category[1] += 1
                 category[2] += fsize
                 category[3] += fsize
-                if ((path not in stored_images or key != stored_images[path][0])
-                    and (path not in stored_docs or key != stored_docs[path][0])):
+                if path not in stored_state or key != stored_state[path]["embd_signature"]:
                     category[0] -= 1
                     category[2] -= fsize
                     paths_to_add.append(path)
 
             
-            #send queue to frontend and unlock sync button
+            # send queue to frontend and unlock sync button
             # websocket magic here
             total_files = len(paths_to_add)
             queue_data = [{"id": p, "name": os.path.basename(p)} for p in paths_to_add]
