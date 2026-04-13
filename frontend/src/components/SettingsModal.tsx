@@ -45,7 +45,7 @@ const DEFAULT_SETTINGS: Settings = {
   imgModel: IMG_MODELS[0],
   keepModelsInMemory: false,
   pdfComplexityThreshold: 9,
-  duplicateSimilarityThreshold: 0.75,
+  duplicateSimilarityThreshold: 0.9,
 };
 
 function loadFrontendSettings(): Settings {
@@ -285,6 +285,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         cur_image_embedding_model: imgModel,
         keep_models_in_memory: keepModelsInMemory,
         pdf_complexity_threshold: pdfComplexityThreshold,
+        similarity_threshold: duplicateSimilarityThreshold,
       }),
     });
 

@@ -527,7 +527,7 @@ export default function DuplicateGraph() {
   return (
     <div
       ref={graphRef}
-      className="relative h-150 w-full overflow-hidden rounded-ui border border-border bg-surface-muted/50 text-foreground shadow-soft dark:bg-surface-muted/30"
+      className="isolate relative h-150 w-full overflow-hidden rounded-ui border border-border bg-surface-muted/50 text-foreground shadow-soft dark:bg-surface-muted/30"
     >
       <div className="pointer-events-none absolute -left-1/4 -top-1/4 h-1/2 w-1/2 rounded-full bg-primary/8 blur-3xl dark:bg-primary/15" />
       <div className="pointer-events-none absolute -bottom-1/4 -right-1/4 h-3/5 w-3/5 rounded-full bg-surface-elevated/80 blur-3xl dark:bg-surface-elevated/20" />
