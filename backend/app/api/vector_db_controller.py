@@ -30,14 +30,13 @@ def _get_service_for_collection(collection: str) -> ChromaDBImpl:
         )
     return service
 
-def text_query(chunk_input):
-    
+def text_query_with_mode(chunk_input, rerank: bool):
     text_model = (settings.DEFAULT_TEXT_EMBEDDING_MODEL
                   if settings.cur_text_embedding_model == "auto"
                   else settings.cur_text_embedding_model)
 
-    results = search_service.search(chunk_input.text)
-    
+    results = search_service.search(chunk_input.text, rerank=rerank)
+
     embedding_service._get_model(text_model).free_vram()
 
     return results
@@ -78,10 +77,10 @@ def image_query(chunk_input, score_correction : bool):
 async def unified_query(req: VectorQueryRequest):
     try:
         chunk_input = ChunkInput(text=req.text)
-        results = text_query(chunk_input) + image_query(chunk_input, True)
+        results = text_query_with_mode(chunk_input, req.rerank) + image_query(chunk_input, True)
         results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
-        return {"results": results[:settings.top_k]}
+        return {"results": results[:settings.top_k], "reranked": req.rerank}
 
     except Exception as e:
         logger.error(f"Unified Query Failed: {e}")

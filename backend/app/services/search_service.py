@@ -25,7 +25,7 @@ class SearchService:
             return None
         return 1 / (1 + math.exp(-((raw_logit - DISPLAY_SHIFT) / DISPLAY_TEMP)))
     
-    def search(self, query):
+    def collect_unique_candidates(self, query):
         query_embedding = embedding_service.get_query_embedding(query, model_name="auto")
         results = self.collection.query(query_embedding, self.top_k * 3) 
         
@@ -35,10 +35,14 @@ class SearchService:
             if path not in seen:
                 seen[path] = r
          
-        unique = list(seen.values())[:self.top_k]
+        return list(seen.values())[:self.top_k]
+
+    def rerank_candidates(self, query, unique):
+        if not unique:
+            return []
         
         candidates = [r["document"][:MAX_CANDIDATE_CHARS] for r in unique]
-        metadata   = [r["metadata"] for r in unique]
+        metadata = [r["metadata"] for r in unique]
         # model = embedding_service._get_model("bge-m3")
         # scores = model.compute_hybrid_score(query, candidates)
             
@@ -58,6 +62,25 @@ class SearchService:
             })
         
         return sorted(reranked, key=lambda x: x["score"], reverse=True)
+
+    def raw_candidates_to_results(self, unique):
+        raw_results = []
+        for candidate in unique:
+            score = candidate.get("score", 0.0)
+            if score is None:
+                continue
+            raw_results.append({
+                "document": candidate.get("document", ""),
+                "metadata": candidate.get("metadata", {}),
+                "score": max(0.0, min(1.0, float(score)))
+            })
+        return sorted(raw_results, key=lambda x: x["score"], reverse=True)[:self.top_k]
+
+    def search(self, query, rerank: bool = True):
+        unique = self._collect_unique_candidates(query)
+        if rerank:
+            return self._rerank_candidates(query, unique)
+        return self._raw_candidates_to_results(unique)
         
         
 

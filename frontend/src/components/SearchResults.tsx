@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { IconFileImage, IconFileText } from "./icons";
 import { addRecentlyOpened } from "./RecentlyOpened";
 
@@ -57,13 +58,18 @@ type SearchResultsProps = {
   query: string;
   results?: any[];
   isLoading?: boolean;
+  isReranking?: boolean;
+  animationKey?: number;
 };
 
 export function SearchResults({
   query,
   results,
   isLoading = false,
+  isReranking = false,
+  animationKey = 0,
 }: SearchResultsProps) {
+  const [showRerankingBadge, setShowRerankingBadge] = useState(false);
   const electron = (window as any).require
     ? (window as any).require("electron")
     : null;
@@ -74,6 +80,19 @@ export function SearchResults({
   const queryLabel = isImagePathQuery
     ? q.split(/[/\\]/).filter(Boolean).pop() || q
     : q;
+
+  useEffect(() => {
+    if (!isReranking) {
+      setShowRerankingBadge(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowRerankingBadge(true);
+    }, 200);
+
+    return () => window.clearTimeout(timer);
+  }, [isReranking]);
 
   if (isLoading) {
     return (
@@ -145,9 +164,21 @@ export function SearchResults({
           Showing semantic matches.
         </p>
       )}
-      <ul className="flex flex-col gap-3">
+      {showRerankingBadge ? (
+        <div className="mb-3 inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+          Refining results...
+        </div>
+      ) : null}
+      <ul
+        key={animationKey}
+        className={[
+          "flex flex-col gap-3 transition-opacity duration-300",
+          isReranking ? "opacity-50" : "opacity-100",
+          !isReranking ? "animate-results-refresh" : "",
+        ].join(" ")}
+      >
         {transformedResults.map((r) => (
-          <li key={r.name}>
+          <li key={`${r.path}-${r.name}`}>
             <button
               type="button"
               onDoubleClick={async () => {
@@ -159,7 +190,10 @@ export function SearchResults({
                   console.error("Failed to open file:", error);
                 }
               }}
-              className="flex w-full items-center gap-4 rounded-xl border border-border bg-surface-elevated px-4 py-3 text-left shadow-soft transition-all duration-300 ease-material hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98]"
+              className={[
+                "flex w-full items-center gap-4 rounded-xl border border-border bg-surface-elevated px-4 py-3 text-left shadow-soft transition-all duration-300 ease-material focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98]",
+                isReranking ? "animate-pulse" : "hover:shadow-card",
+              ].join(" ")}
             >
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-muted">
                 {r.type === "text" ? (
