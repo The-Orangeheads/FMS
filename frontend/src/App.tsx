@@ -79,7 +79,7 @@ function Dashboard() {
       <div className="flex min-h-0 flex-1">
         {/* Left Sidebar - Fixed */}
         <aside
-          className={`fixed left-0 top-0 z-10 h-screen w-[min(100%,300px)] flex-col border-r border-border bg-surface-elevated/95 shadow-soft backdrop-blur-sm transition-transform duration-300 ease-out lg:flex ${
+          className={`fixed left-0 top-0 z-10 flex h-screen w-[min(100%,300px)] flex-col border-r border-border bg-surface-elevated/95 shadow-soft backdrop-blur-sm transition-transform duration-300 ease-out ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
