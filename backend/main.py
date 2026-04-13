@@ -7,6 +7,7 @@ import asyncio
 from app.core.config import settings
 from app.api.vector_db_controller import router as vector_db_router, clear_router
 from app.api.filesync_controller import router as filesync_router
+from app.api.duplicate_controller import router as duplicates_router
 from app.api import config_controller
 from app.core.websockets import ws_manager
 
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     application.include_router(filesync_router)
     application.include_router(vector_db_router)
     application.include_router(clear_router)
+    application.include_router(duplicates_router)
     application.include_router(config_controller.router, prefix="/api")
     
     # WebSocket Route - Placing it here ensures it's at /ws

@@ -7,7 +7,8 @@ import {
   useCallback,
 } from "react";
 import type { TransitionEvent } from "react";
-import { File, Check, X, ExternalLink, Trash2 } from "lucide-react";
+import { File, Check, X, ExternalLink, Trash2, Loader2 } from "lucide-react";
+import { addRecentlyOpened } from "./RecentlyOpened";
 import {
   readDuplicateSimilarityThreshold,
   SFM_SETTINGS_CHANGED_EVENT,
@@ -24,11 +25,16 @@ function formatBytes(bytes: number, decimals = 1): string {
 }
 
 function formatDate(timestamp: number): string {
+  const ms = timestamp > 1e13 ? Math.floor(timestamp / 1e6) : timestamp;
+  const date = new Date(ms);
+  
+  if (isNaN(date.getTime())) return "Unknown Date";
+  
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(timestamp));
+  }).format(date);
 }
 
 // --- TYPES ---
@@ -83,17 +89,32 @@ function similarityEdgeStroke(similarity: number, threshold: number): string {
 
 // --- DYNAMIC GRAPH LAYOUT ALGORITHM ---
 function calcLayout(nodes: FileNode[], edges: SimilarityEdge[]): LayoutNode[] {
-  const iters = 300;
-  const kRepel = 600;
-  const kSpring = 0.1;
+  if (!nodes || nodes.length === 0) return [];
+
+  const iters = 400; // Increased iterations for annealing
   const idealDist = 25;
-  const kCenter = 0.04;
+  const kSpring = 0.15;
+  const kRepel = 400;
+  const kCenter = 0.03;
   const damp = 0.85;
+  
+  // Hard constraint: nodes must be at least this far apart (percentage of canvas)
+  // 12% is roughly enough space to prevent 80px nodes from overlapping
+  const minNodeDist = 12; 
+
+  // Pre-calculate degrees to normalize spring forces in dense clusters
+  const degree: Record<number, number> = {};
+  nodes.forEach((n) => { degree[n.id] = 0; });
+  edges.forEach((e) => {
+    if (degree[e.source] !== undefined) degree[e.source]++;
+    if (degree[e.target] !== undefined) degree[e.target]++;
+  });
 
   const pos: LayoutNode[] = nodes.map((n, i) => {
     const angle = (i * 2 * Math.PI) / nodes.length;
     return {
       ...n,
+      // Start in a wider circle so they have room to push each other around
       x: 50 + Math.cos(angle) * 40,
       y: 50 + Math.sin(angle) * 40,
       vx: 0,
@@ -102,19 +123,26 @@ function calcLayout(nodes: FileNode[], edges: SimilarityEdge[]): LayoutNode[] {
   });
 
   for (let i = 0; i < iters; i++) {
+    // Simulated annealing: force multiplier cools down from 1.0 to 0.0
+    const alpha = 1 - i / iters;
+
+    // 1. Repulsion between all nodes
     for (let a = 0; a < pos.length; a++) {
       for (let b = a + 1; b < pos.length; b++) {
         let dx = pos[a].x - pos[b].x;
         let dy = pos[a].y - pos[b].y;
         let dSq = dx * dx + dy * dy;
+
+        // Prevent math explosion if perfectly overlapping
         if (dSq === 0) {
-          dx = 0.1;
-          dy = 0.1;
-          dSq = 0.02;
+          dx = (Math.random() - 0.5);
+          dy = (Math.random() - 0.5);
+          dSq = dx * dx + dy * dy;
         }
 
         const d = Math.sqrt(dSq);
-        const f = kRepel / dSq;
+        const f = (kRepel / dSq) * alpha;
+        
         const fx = (dx / d) * f;
         const fy = (dy / d) * f;
 
@@ -125,6 +153,7 @@ function calcLayout(nodes: FileNode[], edges: SimilarityEdge[]): LayoutNode[] {
       }
     }
 
+    // 2. Attraction along edges (Springs)
     for (const edge of edges) {
       const aIdx = pos.findIndex((n) => n.id === edge.source);
       const bIdx = pos.findIndex((n) => n.id === edge.target);
@@ -135,9 +164,12 @@ function calcLayout(nodes: FileNode[], edges: SimilarityEdge[]): LayoutNode[] {
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       let d = Math.sqrt(dx * dx + dy * dy);
-      if (d === 0) d = 0.1;
+      if (d === 0) d = 0.01;
 
-      const f = kSpring * edge.similarity * (d - idealDist);
+      // Normalize by degree to prevent dense clusters from imploding into a singularity
+      const linkStrength = 1 / Math.max(1, Math.min(degree[a.id] || 1, degree[b.id] || 1));
+      
+      const f = kSpring * linkStrength * edge.similarity * (d - idealDist) * alpha;
       const fx = (dx / d) * f;
       const fy = (dy / d) * f;
 
@@ -147,16 +179,55 @@ function calcLayout(nodes: FileNode[], edges: SimilarityEdge[]): LayoutNode[] {
       b.vy! -= fy;
     }
 
+    // 3. Center gravity, velocity update
     for (const p of pos) {
-      p.vx! += (50 - p.x) * kCenter;
-      p.vy! += (50 - p.y) * kCenter;
+      p.vx! += (50 - p.x) * kCenter * alpha;
+      p.vy! += (50 - p.y) * kCenter * alpha;
 
-      p.x += p.vx!;
-      p.y += p.vy!;
+      // Clamp max velocity to prevent wild shooting
+      p.vx = Math.max(-10, Math.min(10, p.vx!));
+      p.vy = Math.max(-10, Math.min(10, p.vy!));
 
-      p.vx! *= damp;
-      p.vy! *= damp;
+      p.x += p.vx;
+      p.y += p.vy;
 
+      p.vx *= damp;
+      p.vy *= damp;
+    }
+
+    // 4. Hard Collision Resolution (Anti-Overlap)
+    // Run multiple mini-passes to resolve cascading overlaps
+    for (let k = 0; k < 3; k++) {
+      for (let a = 0; a < pos.length; a++) {
+        for (let b = a + 1; b < pos.length; b++) {
+          let dx = pos[a].x - pos[b].x;
+          let dy = pos[a].y - pos[b].y;
+          let d = Math.sqrt(dx * dx + dy * dy);
+          
+          if (d < minNodeDist) {
+            if (d === 0) { dx = 0.1; dy = 0.1; d = 0.14; }
+            // Move each node back by half the overlapping amount
+            const overlap = (minNodeDist - d) / 2;
+            const fixX = (dx / d) * overlap;
+            const fixY = (dy / d) * overlap;
+            
+            pos[a].x += fixX;
+            pos[a].y += fixY;
+            pos[b].x -= fixX;
+            pos[b].y -= fixY;
+            
+            // Kill velocity in the direction of the collision to prevent bouncing
+            pos[a].vx! *= 0.5;
+            pos[a].vy! *= 0.5;
+            pos[b].vx! *= 0.5;
+            pos[b].vy! *= 0.5;
+          }
+        }
+      }
+    }
+
+    // 5. Bounds Clamping
+    for (const p of pos) {
       p.x = Math.max(2, Math.min(98, p.x));
       p.y = Math.max(2, Math.min(98, p.y));
     }
@@ -165,45 +236,18 @@ function calcLayout(nodes: FileNode[], edges: SimilarityEdge[]): LayoutNode[] {
   return pos;
 }
 
-// --- EXPANDED MOCK DATA (Int based id, size, date) ---
-const MOCK_NODES: FileNode[] = [
-  { id: 1, name: "Q3_Report_Final.pdf", path: "/docs/finance/Q3_Report_Final.pdf", size: 2516582, date: 1759363200000 },
-  { id: 2, name: "Q3_Report_v2.pdf", path: "/docs/archive/Q3_Report_v2.pdf", size: 2411724, date: 1759017600000 },
-  { id: 3, name: "Q3_Financials_Draft.pdf", path: "/desktop/Q3_Financials_Draft.pdf", size: 2516582, date: 1759276800000 },
-  { id: 4, name: "Logo_HighRes.png", path: "/assets/branding/Logo_HighRes.png", size: 5347737, date: 1736899200000 },
-  { id: 5, name: "Logo_print_copy.png", path: "/assets/marketing/Logo_print_copy.png", size: 5347737, date: 1736985600000 },
-  { id: 15, name: "Logo_Transparent.png", path: "/assets/branding/Logo_Transparent.png", size: 5033164, date: 1737072000000 },
-  { id: 7, name: "DSC00124.jpg", path: "/photos/trip/DSC00124.jpg", size: 13002342, date: 1754956800000 },
-  { id: 8, name: "DSC00125.jpg", path: "/photos/trip/DSC00125.jpg", size: 13107200, date: 1754956800000 },
-  { id: 9, name: "DSC00126.jpg", path: "/photos/trip/DSC00126.jpg", size: 12897484, date: 1754956800000 },
-  { id: 10, name: "tailwind.config.js", path: "/dev/project-alpha/tailwind.config.js", size: 4096, date: 1775001600000 },
-  { id: 11, name: "tailwind.config.old.js", path: "/dev/project-alpha/archive/tailwind.config.old.js", size: 3891, date: 1773532800000 },
-  { id: 12, name: "config.backup.js", path: "/backups/config.backup.js", size: 4096, date: 1775088000000 },
-  { id: 13, name: "Interview_Raw.mp4", path: "/video/raw/Interview_Raw.mp4", size: 1288490188, date: 1765324800000 },
-  { id: 14, name: "Interview_Edited_v1.mp4", path: "/video/exports/Interview_Edited_v1.mp4", size: 891289600, date: 1765497600000 },
-  { id: 6, name: "system_log.zip", path: "/backups/system_log.zip", size: 1288490188, date: 1710201600000 },
-  { id: 16, name: "presentation_notes.txt", path: "/docs/notes.txt", size: 12288, date: 1771545600000 },
-];
-
-const MOCK_EDGES: SimilarityEdge[] = [
-  { id: 101, source: 1, target: 2, similarity: 0.85 },
-  { id: 102, source: 1, target: 3, similarity: 0.98 },
-  { id: 103, source: 2, target: 3, similarity: 0.8 },
-  { id: 104, source: 4, target: 5, similarity: 0.99 },
-  { id: 105, source: 4, target: 15, similarity: 0.92 },
-  { id: 106, source: 5, target: 15, similarity: 0.88 },
-  { id: 107, source: 7, target: 8, similarity: 0.97 },
-  { id: 108, source: 8, target: 9, similarity: 0.96 },
-  { id: 109, source: 7, target: 9, similarity: 0.94 },
-  { id: 110, source: 10, target: 11, similarity: 0.82 },
-  { id: 111, source: 10, target: 12, similarity: 0.99 },
-  { id: 112, source: 11, target: 12, similarity: 0.79 },
-  { id: 113, source: 13, target: 14, similarity: 0.75 },
-  { id: 114, source: 13, target: 1, similarity: 0.75 },
-];
-
 export default function DuplicateGraph() {
-  const layoutNodes = useMemo(() => calcLayout(MOCK_NODES, MOCK_EDGES), []);
+    const electron = (window as any).require
+    ? (window as any).require("electron")
+    : null;
+  // --- GRAPH DATA STATE ---
+  const [graphNodes, setGraphNodes] = useState<FileNode[]>([]);
+  const [graphEdges, setGraphEdges] = useState<SimilarityEdge[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Layout calculated dynamically when data changes
+  const layoutNodes = useMemo(() => calcLayout(graphNodes, graphEdges), [graphNodes, graphEdges]);
+
   const [activeNodeId, setActiveNodeId] = useState<number | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<number | null>(null);
 
@@ -221,6 +265,65 @@ export default function DuplicateGraph() {
 
   const [graphFitScale, setGraphFitScale] = useState(1);
   const [duplicateThreshold, setDuplicateThreshold] = useState(readDuplicateSimilarityThreshold);
+
+  // --- DATA FETCHING ---
+  const fetchPage = useCallback(async (page: number) => {
+    setIsLoading(true);
+    setGraphNodes([]);
+    setGraphEdges([]);
+    
+    // Reset local UI states when fetching new data
+    setActiveNodeId(null);
+    setDisplayNode(null);
+    setPanelShown(false);
+    setIsClosingPanel(false);
+    setSelectedForDeletion(new Set());
+    hadOpenPanelRef.current = false;
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/duplicates/get_dupes?page=${page}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch duplicates data");
+      }
+      
+      const data = await response.json();
+
+      // Transform backend nodes to internal format
+      const formattedNodes: FileNode[] = (data.nodes || []).map((node: any) => {
+        // Extract filename from path (handles both / and \ separators)
+        const fileName = String(node.path).split(/[/\\]/).pop() || "Unknown File";
+        
+        return {
+          id: node.id,
+          name: fileName,
+          path: node.path,
+          size: node.file_size,
+          date: node.modify_date,
+        };
+      });
+
+      // Transform backend edges [source, target, similarity] to internal format
+      const formattedEdges: SimilarityEdge[] = (data.edges || []).map((edge: any, index: number) => ({
+        id: index, // Backend doesn't provide edge ID, generating one
+        source: edge[0],
+        target: edge[1],
+        similarity: edge[2],
+      }));
+
+      setGraphNodes(formattedNodes);
+      setGraphEdges(formattedEdges);
+    } catch (error) {
+      console.error("Error fetching duplicates:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Fetch initial page on mount
+  useEffect(() => {
+    fetchPage(0);
+  }, [fetchPage]);
+
 
   useEffect(() => {
     const bump = () => setDuplicateThreshold(readDuplicateSimilarityThreshold());
@@ -253,7 +356,7 @@ export default function DuplicateGraph() {
 
     const w = area.clientWidth;
     const h = area.clientHeight;
-    if (w < 32 || h < 32) {
+    if (w < 32 || h < 32 || layoutNodes.length === 0) {
       setGraphFitScale(1);
       return;
     }
@@ -377,7 +480,7 @@ export default function DuplicateGraph() {
 
   const adjacentData = useMemo<AdjacentNodeData[]>(() => {
     if (!displayNode) return [];
-    const connections = MOCK_EDGES.filter(
+    const connections = graphEdges.filter(
       (e) => e.source === displayNode.id || e.target === displayNode.id,
     ).map((e) => {
       const adjacentId = e.source === displayNode.id ? e.target : e.source;
@@ -385,17 +488,17 @@ export default function DuplicateGraph() {
       return { node, similarity: e.similarity };
     });
     return connections.sort((a, b) => b.similarity - a.similarity);
-  }, [displayNode, layoutNodes]);
+  }, [displayNode, layoutNodes, graphEdges]);
 
   const activeNodeGroupIds = useMemo<Set<number>>(() => {
     if (!activeNodeId) return new Set(layoutNodes.map((n) => n.id));
     const ids = new Set<number>([activeNodeId]);
-    MOCK_EDGES.forEach((e) => {
+    graphEdges.forEach((e) => {
       if (e.source === activeNodeId) ids.add(e.target);
       if (e.target === activeNodeId) ids.add(e.source);
     });
     return ids;
-  }, [activeNodeId, layoutNodes]);
+  }, [activeNodeId, layoutNodes, graphEdges]);
 
   // --- HANDLERS ---
   const handleNodeClick = (id: number) => {
@@ -429,128 +532,149 @@ export default function DuplicateGraph() {
       <div className="pointer-events-none absolute -left-1/4 -top-1/4 h-1/2 w-1/2 rounded-full bg-primary/8 blur-3xl dark:bg-primary/15" />
       <div className="pointer-events-none absolute -bottom-1/4 -right-1/4 h-3/5 w-3/5 rounded-full bg-surface-elevated/80 blur-3xl dark:bg-surface-elevated/20" />
 
-      {/* Main Canvas Legend */}
-      <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2 rounded-xl border border-border bg-surface-elevated/90 p-3 text-xs shadow-soft backdrop-blur-md dark:bg-surface-elevated/90">
-        <div className="font-semibold text-foreground">Similarity Key</div>
-        <div className="flex items-center gap-2 text-foreground-muted">
-          <div 
-            className="h-1.5 w-6 rounded-full" 
-            style={{ background: `linear-gradient(to right, rgb(${EDGE_YELLOW.r}, ${EDGE_YELLOW.g}, ${EDGE_YELLOW.b}), rgb(${EDGE_RED.r}, ${EDGE_RED.g}, ${EDGE_RED.b}))` }} 
-          />
-          <span>Threshold to 100%</span>
+      {/* LOADING STATE */}
+      {isLoading && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-surface-muted/20 backdrop-blur-[2px]">
+          <Loader2 className="animate-spin text-primary mb-3" size={42} />
+          <p className="text-sm font-medium text-foreground">Analyzing file duplicates...</p>
         </div>
-      </div>
+      )}
 
-      <div
-        ref={graphAreaRef}
-        className="absolute inset-0 box-border p-[clamp(12px,3vw,32px)]"
-      >
-        <div
-          className="relative h-full w-full origin-center transition-transform duration-500 ease-material"
-          style={{ transform: `scale(${graphFitScale})` }}
-        >
-          <svg className="absolute inset-0 h-full w-full pointer-events-none">
-            {MOCK_EDGES.map((edge) => {
-              const source = layoutNodes.find((n) => n.id === edge.source);
-              const target = layoutNodes.find((n) => n.id === edge.target);
+      {/* EMPTY STATE */}
+      {!isLoading && graphNodes.length === 0 && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center">
+          <p className="text-base font-medium text-foreground-muted">
+            No duplicates found for this page.
+          </p>
+        </div>
+      )}
 
-              if (!source || !target) return null;
-
-            const edgeInFocus =
-                !activeNodeId ||
-                edge.source === activeNodeId ||
-                edge.target === activeNodeId;
-                  
-              const isDimmed = Boolean(activeNodeId && !isClosingPanel && !edgeInFocus);
-              const strokeCol = similarityEdgeStroke(edge.similarity, duplicateThreshold);
-              const brightOpacity = 0.58 + edge.similarity * 0.38;
-              const dimOpacity = 0.14;
-
-              return (
-                <g 
-                  key={edge.id}
-                  className="pointer-events-auto cursor-crosshair"
-                  onMouseEnter={() => setHoveredEdgeId(edge.id)}
-                  onMouseLeave={() => setHoveredEdgeId(null)}
-                >
-                  {/* Invisible thick line for easier hovering */}
-                  <line
-                    x1={`${source.x}%`} y1={`${source.y}%`}
-                    x2={`${target.x}%`} y2={`${target.y}%`}
-                    stroke="transparent"
-                    strokeLinecap="round"
-                    strokeWidth={24}
-                  />
-                  {/* Visible edge line */}
-                  <line
-                    x1={`${source.x}%`} y1={`${source.y}%`}
-                    x2={`${target.x}%`} y2={`${target.y}%`}
-                    stroke={strokeCol}
-                    strokeLinecap="round"
-                    strokeWidth={CONSTANT_EDGE_WIDTH}
-                    className="transition-[opacity,stroke,stroke-width] duration-500 ease-material pointer-events-none"
-                    style={{ opacity: isDimmed ? dimOpacity : brightOpacity }}
-                  />
-                </g>
-              );
-            })}
-          </svg>
-
-          {/* Absolute Edge Hover Tooltips */}
-          <div className="absolute inset-0 pointer-events-none">
-            {hoveredEdgeId !== null && (() => {
-              const edge = MOCK_EDGES.find(e => e.id === hoveredEdgeId);
-              if (!edge) return null;
-              const source = layoutNodes.find(n => n.id === edge.source);
-              const target = layoutNodes.find(n => n.id === edge.target);
-              if (!source || !target) return null;
-
-              return (
-                <div 
-                  className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border bg-surface-elevated/95 px-2.5 py-1 text-xs font-bold text-foreground shadow-soft backdrop-blur-md"
-                  style={{
-                    left: `${(source.x + target.x) / 2}%`,
-                    top: `${(source.y + target.y) / 2}%`,
-                  }}
-                >
-                  {(edge.similarity * 100).toFixed(0)}% Match
-                </div>
-              );
-            })()}
+      {!isLoading && graphNodes.length > 0 && (
+        <>
+          {/* Main Canvas Legend */}
+          <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2 rounded-xl border border-border bg-surface-elevated/90 p-3 text-xs shadow-soft backdrop-blur-md dark:bg-surface-elevated/90">
+            <div className="font-semibold text-foreground">Similarity Key</div>
+            <div className="flex items-center gap-2 text-foreground-muted">
+              <div 
+                className="h-1.5 w-6 rounded-full" 
+                style={{ background: `linear-gradient(to right, rgb(${EDGE_YELLOW.r}, ${EDGE_YELLOW.g}, ${EDGE_YELLOW.b}), rgb(${EDGE_RED.r}, ${EDGE_RED.g}, ${EDGE_RED.b}))` }} 
+              />
+              <span>Threshold to 100%</span>
+            </div>
           </div>
 
-          <div className="absolute inset-0 h-full w-full pointer-events-none">
-            {layoutNodes.map((node) => {
-              const isFocused = node.id === activeNodeId && !isClosingPanel;
-              const isDimmed = activeNodeId && !isClosingPanel && !activeNodeGroupIds.has(node.id);
+          <div
+            ref={graphAreaRef}
+            className="absolute inset-0 box-border p-[clamp(12px,3vw,32px)]"
+          >
+            <div
+              className="relative h-full w-full origin-center transition-transform duration-500 ease-material"
+              style={{ transform: `scale(${graphFitScale})` }}
+            >
+              <svg className="absolute inset-0 h-full w-full pointer-events-none">
+                {graphEdges.map((edge) => {
+                  const source = layoutNodes.find((n) => n.id === edge.source);
+                  const target = layoutNodes.find((n) => n.id === edge.target);
 
-              return (
-                <div
-                  key={node.id}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-700 ease-out pointer-events-auto"
-                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                >
-                  <div className={`relative flex flex-col items-center transition-[transform,opacity] duration-500 ease-material ${isDimmed ? "scale-[0.88] opacity-[0.22]" : "scale-100 opacity-100"}`}>
-                    <button
-                      type="button"
-                      data-node-btn="true"
-                      onClick={() => handleNodeClick(node.id)}
-                      className={`relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full shadow-soft transition-[colors,box-shadow,transform] duration-300 ease-material hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated active:scale-95 ${!isDimmed ? "hover:scale-[1.04]" : ""}
-                    ${isFocused ? "bg-primary text-on-primary shadow-card" : "bg-surface-elevated text-foreground ring-1 ring-border"}
-                  `}
+                  if (!source || !target) return null;
+
+                  const edgeInFocus =
+                    !activeNodeId ||
+                    edge.source === activeNodeId ||
+                    edge.target === activeNodeId;
+                      
+                  const isDimmed = Boolean(activeNodeId && !isClosingPanel && !edgeInFocus);
+                  const strokeCol = similarityEdgeStroke(edge.similarity, duplicateThreshold);
+                  const brightOpacity = 0.58 + edge.similarity * 0.38;
+                  const dimOpacity = 0.14;
+
+                  return (
+                    <g 
+                      key={edge.id}
+                      className="pointer-events-auto cursor-crosshair"
+                      onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                      onMouseLeave={() => setHoveredEdgeId(null)}
                     >
-                      <File size={36} />
-                    </button>
-                    <div className="pointer-events-none absolute left-1/2 top-[calc(100%+0.75rem)] z-10 max-w-[min(200px,40vw)] -translate-x-1/2 truncate rounded-full border border-border bg-surface-elevated/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-soft backdrop-blur-sm sm:text-sm">
-                      {node.name}
+                      {/* Invisible thick line for easier hovering */}
+                      <line
+                        x1={`${source.x}%`} y1={`${source.y}%`}
+                        x2={`${target.x}%`} y2={`${target.y}%`}
+                        stroke="transparent"
+                        strokeLinecap="round"
+                        strokeWidth={24}
+                      />
+                      {/* Visible edge line */}
+                      <line
+                        x1={`${source.x}%`} y1={`${source.y}%`}
+                        x2={`${target.x}%`} y2={`${target.y}%`}
+                        stroke={strokeCol}
+                        strokeLinecap="round"
+                        strokeWidth={CONSTANT_EDGE_WIDTH}
+                        className="transition-[opacity,stroke,stroke-width] duration-500 ease-material pointer-events-none"
+                        style={{ opacity: isDimmed ? dimOpacity : brightOpacity }}
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+
+              {/* Absolute Edge Hover Tooltips */}
+              <div className="absolute inset-0 pointer-events-none">
+                {hoveredEdgeId !== null && (() => {
+                  const edge = graphEdges.find(e => e.id === hoveredEdgeId);
+                  if (!edge) return null;
+                  const source = layoutNodes.find(n => n.id === edge.source);
+                  const target = layoutNodes.find(n => n.id === edge.target);
+                  if (!source || !target) return null;
+
+                  return (
+                    <div 
+                      className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border bg-surface-elevated/95 px-2.5 py-1 text-xs font-bold text-foreground shadow-soft backdrop-blur-md"
+                      style={{
+                        left: `${(source.x + target.x) / 2}%`,
+                        top: `${(source.y + target.y) / 2}%`,
+                      }}
+                    >
+                      {(edge.similarity * 100).toFixed(0)}% Match
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })()}
+              </div>
+
+              <div className="absolute inset-0 h-full w-full pointer-events-none">
+                {layoutNodes.map((node) => {
+                  const isFocused = node.id === activeNodeId && !isClosingPanel;
+                  const isDimmed = activeNodeId && !isClosingPanel && !activeNodeGroupIds.has(node.id);
+
+                  return (
+                    <div
+                      key={node.id}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-700 ease-out pointer-events-auto"
+                      style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                    >
+                      <div className={`relative flex flex-col items-center transition-[transform,opacity] duration-500 ease-material ${isDimmed ? "scale-[0.88] opacity-[0.22]" : "scale-100 opacity-100"}`}>
+                        <button
+                          type="button"
+                          data-node-btn="true"
+                          onClick={() => handleNodeClick(node.id)}
+                          className={`relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full shadow-soft transition-[colors,box-shadow,transform] duration-300 ease-material hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated active:scale-95 ${!isDimmed ? "hover:scale-[1.04]" : ""}
+                        ${isFocused ? "bg-primary text-on-primary shadow-card" : "bg-surface-elevated text-foreground ring-1 ring-border"}
+                      `}
+                        >
+                          <File size={36} />
+                        </button>
+                        <div className="pointer-events-none absolute left-1/2 top-[calc(100%+0.75rem)] z-10 max-w-[min(200px,40vw)] -translate-x-1/2 truncate rounded-full border border-border bg-surface-elevated/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-soft backdrop-blur-sm sm:text-sm">
+                          {node.name}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       <div
         ref={panelRef}
@@ -575,6 +699,15 @@ export default function DuplicateGraph() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={async () => {
+                      if (!electron?.ipcRenderer || !displayNode.path) return;
+                      try {
+                        await electron.ipcRenderer.invoke("open-file-in-os", displayNode.path);
+                        addRecentlyOpened(displayNode.path);
+                      } catch (error) {
+                        console.error("Failed to open file:", error);
+                      }
+                    }}
                     className="flex h-9 items-center justify-center gap-2 rounded-full bg-surface-muted px-4 text-sm font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-elevated hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label="Open selected file"
                   >
@@ -662,6 +795,15 @@ export default function DuplicateGraph() {
 
                           <button
                             type="button"
+                            onClick={async () => {
+                              if (!electron?.ipcRenderer || !node.path) return;
+                              try {
+                                await electron.ipcRenderer.invoke("open-file-in-os", node.path);
+                                addRecentlyOpened(node.path);
+                              } catch (error) {
+                                console.error("Failed to open file:", error);
+                              }
+                            }}
                             className="flex h-7 items-center justify-center rounded-full bg-surface-elevated px-3 text-xs font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-muted hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             aria-label="Open file location"
                           >

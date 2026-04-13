@@ -96,6 +96,8 @@ class ChromaDBImpl():
 
         hits = []
         for meta, dist in zip(metas, dists):
+            if dist > max_dist:
+                continue
             # if metadata was empty, create an object and add file_path from the id
             meta_out = dict(meta or {})
             try:
@@ -108,9 +110,9 @@ class ChromaDBImpl():
 
     def get_embeddings(self, ids : list[str]) -> list[list[float]]:
         if not ids:
-            return
+            return []
         results = self.collection.get(
-            ids=["your_id"],
+            ids=ids,
             include=["embeddings"]
         )
         return results["embeddings"]

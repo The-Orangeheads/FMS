@@ -276,7 +276,7 @@ class FilesDB:
         db_service = images_db_service if file_type == "image" else documents_db_service
         embeddings = db_service.get_embeddings(e_ids)
 
-        if not embeddings:
+        if len(embeddings) == 0:
             return []
         
         if file_type == "image":
