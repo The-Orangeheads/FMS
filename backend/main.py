@@ -7,6 +7,7 @@ import asyncio
 from app.core.config import settings
 from app.api.vector_db_controller import router as vector_db_router, clear_router
 from app.api.filesync_controller import router as filesync_router
+from app.api.duplicate_controller import router as duplicates_router
 from app.api import config_controller
 from app.core.websockets import ws_manager
 
@@ -18,9 +19,11 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     # this secion runs on app startup
     auto_sync_task = asyncio.create_task(file_syncer.auto_sync())
+    dd_auto_sync_task = asyncio.create_task(file_syncer.auto_sync_dd())
     yield
     # this secion runs on app shutdown
     auto_sync_task.cancel()
+    dd_auto_sync_task.cancel()
 
 
 def create_app() -> FastAPI:
@@ -44,6 +47,7 @@ def create_app() -> FastAPI:
     application.include_router(filesync_router)
     application.include_router(vector_db_router)
     application.include_router(clear_router)
+    application.include_router(duplicates_router)
     application.include_router(config_controller.router, prefix="/api")
     
     # WebSocket Route - Placing it here ensures it's at /ws
