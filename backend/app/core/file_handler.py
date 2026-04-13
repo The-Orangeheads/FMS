@@ -78,7 +78,6 @@ class FileHandler:
                 
                 # 2. Compress extreme vertical whitespace (3+ newlines) down to exactly 2 (\n\n)
                 page["text"] = re.sub(r'\n{3,}', '\n\n', cleaned_text)
-        # =================================================================
         
         result_chunks = self.chunker.chunk_document(
             pages=extracted_pages

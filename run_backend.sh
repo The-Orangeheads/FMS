@@ -36,8 +36,20 @@ done
 PROJECT_ROOT=$(dirname "$(realpath "$0")")
 BACKEND_PATH="$PROJECT_ROOT/backend"
 
+# --- THE FIX: Activate the virtual environment ---
+VENV_PATH="$PROJECT_ROOT/venv/bin/activate"
+if [ -f "$VENV_PATH" ]; then
+    source "$VENV_PATH"
+else
+    echo "Error: Virtual environment not found at $VENV_PATH"
+    echo "Please make sure your venv is created in the project root."
+    exit 1
+fi
+
 # Base command
-UVICORN_ARGS=("app.main:app")
+# IMPORTANT: If your FastAPI file is located at 'backend/main.py' instead of 
+# 'backend/app/main.py', you MUST change "app.main:app" to "main:app" on the next line.
+UVICORN_ARGS=("main:app")
 
 # Reload flag
 if [ "$RELOAD" = true ]; then
