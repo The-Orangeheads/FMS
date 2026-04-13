@@ -65,3 +65,7 @@ class DirectoryReq(BaseModel):
     
 class DirectoryListRes(BaseModel):
     dirs : List[str]
+
+class DuplicatesPage(BaseModel):
+    nodes : list[dict[str, Any]]
+    edges : list[tuple[int, int, float]]

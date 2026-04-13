@@ -82,6 +82,16 @@ class FilesDB:
                             ON {self.EDGES_TABLE} (node_2);
                             """)
         
+        self.cursor.execute(f"""
+                            CREATE INDEX IF NOT EXISTS idx_edges_node1
+                            ON {self.EDGES_TABLE} (node_1, weight DESC, node_2);
+                            """)
+        
+        self.cursor.execute(f"""
+                            CREATE INDEX IF NOT EXISTS idx_edges_node2
+                            ON {self.EDGES_TABLE} (node_2, weight DESC, node_1);
+                            """)
+        
         self.conn.commit()
 
     def _get_file_id(self, path: str):
@@ -382,11 +392,13 @@ class FilesDB:
             SELECT
                 f.id,
                 f.file_path,
+                f.file_size,
+                f.mdate,
                 COALESCE(MAX(e.weight), 0.0) AS max_weight
             FROM {self.FILES_TABLE} AS f
             LEFT JOIN {self.EDGES_TABLE} AS e
                 ON e.node_1 = f.id OR e.node_2 = f.id
-            GROUP BY f.id, f.file_path
+            GROUP BY f.id, f.file_path, f.file_size, f.mdate
             ORDER BY max_weight DESC, f.id ASC
             LIMIT ? OFFSET ?;
         """, (page_size, offset))
@@ -396,7 +408,14 @@ class FilesDB:
             return [], []
 
         page_ids = [row[0] for row in page_rows]
-        page_paths = {row[0]: row[1] for row in page_rows}
+        page_data = {
+            row[0]: {
+                "path": row[1],
+                "file_size": row[2],
+                "modify_date": row[3],
+            }
+            for row in page_rows
+        }
 
         edges: list[tuple[int, int, float]] = []
         seen_edges: set[tuple[int, int]] = set()
@@ -437,8 +456,8 @@ class FilesDB:
                     edges.append((node_1, node_2, float(weight)))
 
         if not edges:
-            return [], [] #! if no duplicates, return NOTHING
-        
+            return [], []  # no duplicate/connected context to show
+
         # Collect every node mentioned by those edges.
         required_ids = set(page_ids)
         for node_1, node_2, _ in edges:
@@ -447,28 +466,39 @@ class FilesDB:
 
         # Query only the extra nodes that were not already fetched in the first query.
         extra_ids = sorted(required_ids - set(page_ids))
-        extra_paths: dict[int, str] = {}
+        extra_data: dict[int, dict[str, Any]] = {}
 
         if extra_ids:
             placeholders = ",".join(["?"] * len(extra_ids))
             cur.execute(
                 f"""
-                SELECT id, file_path
+                SELECT id, file_path, file_size, mdate
                 FROM {self.FILES_TABLE}
                 WHERE id IN ({placeholders});
                 """,
                 extra_ids,
             )
-            extra_paths = {row[0]: row[1] for row in cur.fetchall()}
+            extra_data = {
+                row[0]: {
+                    "path": row[1],
+                    "file_size": row[2],
+                    "modify_date": row[3],
+                }
+                for row in cur.fetchall()
+            }
 
         nodes: list[dict[str, Any]] = []
         for node_id in page_ids:
-            nodes.append({"id": node_id, "path": page_paths[node_id]})
+            node = {"id": node_id}
+            node.update(page_data[node_id])
+            nodes.append(node)
 
         for node_id in extra_ids:
-            path = extra_paths.get(node_id)
-            if path is not None:
-                nodes.append({"id": node_id, "path": path})
+            data = extra_data.get(node_id)
+            if data is not None:
+                node = {"id": node_id}
+                node.update(data)
+                nodes.append(node)
 
         return nodes, edges
     
