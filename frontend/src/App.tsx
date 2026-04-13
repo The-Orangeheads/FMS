@@ -4,7 +4,7 @@ import { GlobalSearchBar } from "./components/GlobalSearchBar";
 import { RecentlyOpened } from "./components/RecentlyOpened";
 import { SearchResults } from "./components/SearchResults";
 import { SettingsModal } from "./components/SettingsModal";
-import { CleanupStorage } from "./components/CleanupStorage";
+import DuplicateGraph from "./components/CleanupStorage";
 import { StorageDonut } from "./components/StorageDonut";
 import { ActivityEmbedding } from "./components/ActivityEmbedding";
 import {
@@ -24,7 +24,9 @@ function Dashboard() {
   const [isSearching, setIsSearching] = useState(false);
   const [currentView, setCurrentView] = useState<View>("main");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [analytics, setAnalytics] = useState<{ [key: string]: number[] } | null>(null);
+  const [analytics, setAnalytics] = useState<{
+    [key: string]: number[];
+  } | null>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1024px)");
@@ -112,12 +114,18 @@ function Dashboard() {
                   </p>
                 </div>
                 <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.5rem] bg-surface-muted p-4">
-                  <StorageDonut usedTotalLabel={usedTotalLabel} analytics={analytics as any} />
+                  <StorageDonut
+                    usedTotalLabel={usedTotalLabel}
+                    analytics={analytics as any}
+                  />
                 </div>
               </section>
 
               <div className="rounded-[1.75rem] border border-border bg-surface-elevated p-4 shadow-soft">
-                <ActivityEmbedding onViewAll={goToEmbedding} onAnalyticsUpdate={setAnalytics} />
+                <ActivityEmbedding
+                  onViewAll={goToEmbedding}
+                  onAnalyticsUpdate={setAnalytics}
+                />
               </div>
             </div>
           </div>
@@ -210,7 +218,7 @@ function Dashboard() {
                     <h2 className="text-center mb-4 text-3xl font-bold text-foreground">
                       Cleanup Storage
                     </h2>
-                    <CleanupStorage />
+                    <DuplicateGraph />
                   </section>
                 </div>
               ) : currentView === "embedding" ? (
@@ -279,7 +287,7 @@ function Dashboard() {
                       View all
                     </button>
                     <div className="mt-6">
-                      <CleanupStorage />
+                      <DuplicateGraph />
                     </div>
                   </section>
                 </div>

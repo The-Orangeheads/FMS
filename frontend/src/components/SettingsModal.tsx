@@ -1,6 +1,10 @@
 import { useEffect, useId, useState } from "react";
 import { IconMoon, IconPlus, IconSun, IconTrash } from "./icons";
 import { useTheme } from "../context/ThemeContext";
+import {
+  SFM_SETTINGS_STORAGE_KEY as SETTINGS_STORAGE_KEY,
+  notifySfmSettingsChanged,
+} from "../lib/sfmSettingsClient";
 
 type SettingsModalProps = {
   open: boolean;
@@ -15,8 +19,6 @@ const IMG_MODELS = [
   "auto",
   "siglip2"
 ];
-const SETTINGS_STORAGE_KEY = "sfm-settings";
-
 type Settings = {
   syncInterval: number;
   topK: number;
@@ -28,6 +30,8 @@ type Settings = {
   imgModel: string;
   keepModelsInMemory: boolean;
   pdfComplexityThreshold: number;
+  /** 0.5–0.99: pairs at or above this similarity are treated as duplicates (cleanup graph, etc.). */
+  duplicateSimilarityThreshold: number;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -41,6 +45,7 @@ const DEFAULT_SETTINGS: Settings = {
   imgModel: IMG_MODELS[0],
   keepModelsInMemory: false,
   pdfComplexityThreshold: 9,
+  duplicateSimilarityThreshold: 0.75,
 };
 
 function loadFrontendSettings(): Settings {
@@ -88,6 +93,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [pdfComplexityThreshold, setPdfComplexityThreshold] = useState(
     initialSettings.pdfComplexityThreshold,
   );
+  const [duplicateSimilarityThreshold, setDuplicateSimilarityThreshold] =
+    useState(initialSettings.duplicateSimilarityThreshold);
   const [dirs, setDirs] = useState<string[]>([]);
   const [dirsLoading, setDirsLoading] = useState(false);
 
@@ -108,6 +115,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setImgModel(localSettings.imgModel);
     setKeepModelsInMemory(localSettings.keepModelsInMemory);
     setPdfComplexityThreshold(localSettings.pdfComplexityThreshold);
+    setDuplicateSimilarityThreshold(localSettings.duplicateSimilarityThreshold);
 
     try {
       const response = await fetch("http://localhost:8000/api/config/");
@@ -129,6 +137,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             data.keep_models_in_memory ?? localSettings.keepModelsInMemory,
           pdfComplexityThreshold:
             data.pdf_complexity_threshold ?? localSettings.pdfComplexityThreshold,
+          duplicateSimilarityThreshold:
+            typeof data.duplicate_similarity_threshold === "number"
+              ? Math.min(0.99, Math.max(0.5, data.duplicate_similarity_threshold))
+              : localSettings.duplicateSimilarityThreshold,
         };
         setCommittedValues(newValues);
         setSyncInterval(newValues.syncInterval);
@@ -141,6 +153,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setImgModel(newValues.imgModel);
         setKeepModelsInMemory(newValues.keepModelsInMemory);
         setPdfComplexityThreshold(newValues.pdfComplexityThreshold);
+        setDuplicateSimilarityThreshold(newValues.duplicateSimilarityThreshold);
         persistFrontendSettings(newValues);
       }
     } catch (err) {
@@ -160,6 +173,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setImgModel(committedValues.imgModel);
     setKeepModelsInMemory(committedValues.keepModelsInMemory);
     setPdfComplexityThreshold(committedValues.pdfComplexityThreshold);
+    setDuplicateSimilarityThreshold(committedValues.duplicateSimilarityThreshold);
     onClose();
   };
 
@@ -249,9 +263,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       imgModel,
       keepModelsInMemory,
       pdfComplexityThreshold,
+      duplicateSimilarityThreshold,
     };
 
     persistFrontendSettings(settings);
+    notifySfmSettingsChanged();
 
     await fetch("http://localhost:8000/api/config/", {
       method: "POST",
@@ -612,6 +628,16 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               step={1}
               value={pdfComplexityThreshold}
               onChange={setPdfComplexityThreshold}
+            />
+
+            <SliderField
+              label="Duplicate similarity threshold"
+              description="Minimum similarity score (0–100%) to flag two files as duplicates. The cleanup graph maps this value to yellow and 100% similarity to red."
+              min={0.5}
+              max={0.95}
+              step={0.01}
+              value={duplicateSimilarityThreshold}
+              onChange={setDuplicateSimilarityThreshold}
             />
 
             <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
