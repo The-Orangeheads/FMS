@@ -58,7 +58,8 @@ class SearchService:
             reranked.append({
                 "document": candidates[i],
                 "metadata": metadata[i],
-                "score": score
+                "score": score,
+                "type": "text",
             })
         
         return sorted(reranked, key=lambda x: x["score"], reverse=True)
@@ -72,8 +73,9 @@ class SearchService:
             raw_results.append({
                 "document": candidate.get("document", ""),
                 "metadata": candidate.get("metadata", {}),
-                "score": max(0.0, min(1.0, float(score)))
-            })
+                "score": max(0.0, min(1.0, float(score))),
+                "type": "text",
+          })
         return sorted(raw_results, key=lambda x: x["score"], reverse=True)[:self.top_k]
 
     def search(self, query, rerank: bool = True):
@@ -81,7 +83,5 @@ class SearchService:
         if rerank:
             return self.rerank_candidates(query, unique)
         return self.raw_candidates_to_results(unique)
-        
-        
 
 search_service = SearchService(documents_db_service, settings.search_threshold, settings.top_k)
