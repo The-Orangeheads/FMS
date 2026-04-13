@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { StorageDonut } from './StorageDonut'
 import { ActivityEmbedding } from './ActivityEmbedding'
-import { CleanupStorage } from './CleanupStorage'
+import DuplicateGraph from './CleanupStorage'
 
 type RightTab = 'statistics' | 'cleanup'
 
@@ -55,7 +55,7 @@ export function RightSidebar() {
               Cleanup storage
             </h2>
             <p className="mb-4 text-xs text-foreground-muted">Near duplicates &amp; reclaim space</p>
-            <CleanupStorage />
+            <DuplicateGraph />
           </>
         )}
       </section>
