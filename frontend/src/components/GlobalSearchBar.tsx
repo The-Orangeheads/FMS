@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { IconImageSearch, IconSearch } from "./icons";
 
 type GlobalSearchBarProps = {
@@ -5,20 +6,26 @@ type GlobalSearchBarProps = {
   searchValue: string;
   onSearchValueChange: (value: string) => void;
   onSearchStart: (query: string) => void;
-  onSubmitSearch: (results: any[]) => void;
+  onSubmitInitialSearch: (results: any[]) => void;
+  onSubmitFinalSearch: (results: any[]) => void;
+  onSearchFailed: () => void;
 };
 
 export function GlobalSearchBar({
   searchValue,
   onSearchValueChange,
   onSearchStart,
-  onSubmitSearch,
+  onSubmitInitialSearch,
+  onSubmitFinalSearch,
+  onSearchFailed,
 }: GlobalSearchBarProps) {
+  const activeRequestId = useRef(0);
   const electron = (window as any).require
     ? (window as any).require("electron")
     : null;
 
   const runReverseImageSearch = async (selectedPath: string) => {
+    const requestId = ++activeRequestId.current;
     onSearchStart(selectedPath);
     try {
       let res = await fetch("http://localhost:8000/api/image/query", {
@@ -49,10 +56,13 @@ export function GlobalSearchBar({
       }
 
       const data = await res.json();
-      onSubmitSearch(data.results || []);
+      if (requestId !== activeRequestId.current) return;
+      onSubmitInitialSearch(data.results || []);
+      onSubmitFinalSearch(data.results || []);
     } catch (error) {
       console.error("Reverse image search failed:", error);
-      onSubmitSearch([]);
+      if (requestId !== activeRequestId.current) return;
+      onSearchFailed();
     }
   };
 
@@ -71,31 +81,52 @@ export function GlobalSearchBar({
 
   const handleSearch = async () => {
     if (searchValue.trim().length === 0) return;
+    const requestId = ++activeRequestId.current;
 
     onSearchStart(searchValue);
 
     try {
-      const res = await fetch('http://localhost:8000/api/vectors/unified/query', {
+      const initialRes = await fetch('http://localhost:8000/api/vectors/unified/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           text: searchValue,
-          k: 10,
-          model_name: 'bge-m3'
+          rerank: false
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Search failed: ${res.statusText}`);
+      if (!initialRes.ok) {
+        throw new Error(`Search failed: ${initialRes.statusText}`);
       }
 
-      const data = await res.json();
-      onSubmitSearch(data.results || []);
+      const initialData = await initialRes.json();
+      if (requestId !== activeRequestId.current) return;
+      onSubmitInitialSearch(initialData.results || []);
+
+      const finalRes = await fetch('http://localhost:8000/api/vectors/unified/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: searchValue,
+          rerank: true
+        }),
+      });
+
+      if (!finalRes.ok) {
+        throw new Error(`Rerank failed: ${finalRes.statusText}`);
+      }
+
+      const finalData = await finalRes.json();
+      if (requestId !== activeRequestId.current) return;
+      onSubmitFinalSearch(finalData.results || []);
     } catch (error) {
       console.error('Backend search failed:', error);
-      onSubmitSearch([]);
+      if (requestId !== activeRequestId.current) return;
+      onSearchFailed();
     }
   };
 

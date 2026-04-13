@@ -48,6 +48,7 @@ class VectorInsertRequest(BaseModel):
 
 class VectorQueryRequest(BaseModel):
     text: str
+    rerank: bool = True
 
 class ImgQueryRequest(BaseModel):
     path: str
