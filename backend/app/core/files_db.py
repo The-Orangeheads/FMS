@@ -4,6 +4,7 @@ from app.services.dupes_finder_service import dupes_finder_service
 import uuid
 from typing import Any
 import threading
+import itertools
 
 class FilesDB:
     FILES_TABLE = "tracked_files"
@@ -154,17 +155,17 @@ class FilesDB:
 
         self.conn.commit()
 
-    def _get_embedding_ids(self, id : int):
-        self.cursor.execute(
-            f"""
-            SELECT embedding_id
-            FROM {self.EMBEDDING_IDS_TABLE}
-            WHERE id = ?
-            """,
-            (id,),
-        )
+    # def _get_embedding_ids(self, id : int):
+    #     self.cursor.execute(
+    #         f"""
+    #         SELECT embedding_id
+    #         FROM {self.EMBEDDING_IDS_TABLE}
+    #         WHERE id = ?
+    #         """,
+    #         (id,),
+    #     )
         
-        return [row[0] for row in self.cursor.fetchall()]
+    #     return [row[0] for row in self.cursor.fetchall()]
 
     def delete_ids(self, ids: list[int]):
         if not ids:
@@ -232,8 +233,10 @@ class FilesDB:
         self.conn.commit()
         self.conn.close()
     
-    def add_dd_node(self, id1 : int, adjacency):
-        
+    def _add_dd_node(self, id1 : int, adjacency : list[dict[str, Any]]):
+        """
+            # DOES NOT COMMIT
+        """
         edges = []
         for match in adjacency:
             path2: str = match.get("path", "")
@@ -255,28 +258,8 @@ class FilesDB:
                 """,
                 edges,
             )
-        
-        self.cursor.execute(
-            f"""
-            SELECT embd_signature
-            FROM {self.FILES_TABLE}
-            WHERE id = ?;
-            """,
-            (id1,),
-        )
-
-        embd_signature = self.cursor.fetchone()[0]
-        
-        self.cursor.execute(
-            f"UPDATE {self.FILES_TABLE} SET dd_signature = ? WHERE id = ?",
-            (embd_signature, id1),
-        )
-
-        self.conn.commit()
     
-    def getSimilar(self, file_id : int, file_type : str) -> list[dict[str, Any]]:
-        e_ids = self._get_embedding_ids(file_id)
-
+    def get_similar(self, e_ids : list[str], file_type : str) -> list[dict[str, Any]]:
         if not e_ids:
             return []
         
@@ -300,18 +283,194 @@ class FilesDB:
             #TODO when documents similarity is implemented
             return []
     
-    def update_dd(self):
-        # get ids, paths and file_type of all with embd_signature != dd_signature
+    # def update_dd(self):
+    #     # get ids, paths and file_type of all with embd_signature != dd_signature
 
-        self.cursor.execute(
-            f"SELECT id, file_type FROM {self.FILES_TABLE} "
-            f"WHERE embd_signature IS NOT NULL "
-            f"AND (dd_signature IS NULL OR embd_signature <> dd_signature)",
-        )
+    #     self.cursor.execute(
+    #         f"SELECT id, file_type FROM {self.FILES_TABLE} "
+    #         f"WHERE embd_signature IS NOT NULL "
+    #         f"AND (dd_signature IS NULL OR embd_signature <> dd_signature)",
+    #     )
     
-        # query similarity based on file_type and save in the db
-        for file_id, file_type in self.cursor.fetchall():
-            self.add_dd_node(file_id, self.getSimilar(file_id, file_type))
+    #     # query similarity based on file_type and save in the db
+    #     for file_id, file_type in self.cursor.fetchall():
+    #         self.add_dd_node(file_id, self.getSimilar(file_id, file_type))
+
+    def _process_batch(self, batch_size : int = 1000) -> bool:
+        """
+        # DOES NOT COMMIT
+        
+        returns whether or not there were batches to process
+        """
+
+        cursor = self.cursor.execute(
+            f"""
+                SELECT f.id, f.file_type, eid.embedding_id
+                FROM {self.FILES_TABLE} f
+                JOIN {self.EMBEDDING_IDS_TABLE} eid ON f.id = eid.id
+                WHERE f.id IN (
+                    SELECT id
+                    from {self.FILES_TABLE}
+                    WHERE dd_signature IS NOT embd_signature
+                    LIMIT ?
+                )
+            """, (batch_size,)
+        )
+
+        first = cursor.fetchone()
+        if first is None:
+            return False
+        
+        rows = itertools.chain([first], cursor)
+        
+        result = {}
+        """
+            result[id] = (file_type, embedding_id_list)
+        """
+        for f_id, file_type, embedding_id in rows:
+            result.setdefault(f_id, (file_type, []))[1].append(embedding_id)
+
+        update_ids : list[int] = []
+        for f_id, (file_type, embedding_ids) in result.items():
+            
+            adj = self.get_similar(
+                e_ids=embedding_ids,
+                file_type=file_type
+            )
+
+            self._add_dd_node(
+                id1=f_id,
+                adjacency=adj
+            )
+
+
+
+            update_ids.append(f_id)
+
+        self.cursor.executemany(
+            f"""
+                UPDATE {self.FILES_TABLE}
+                SET dd_signature = embd_signature
+                WHERE id = ?
+            """, [(i,) for i in update_ids]
+        )
+
+        return True
+
+    async def sync_dd(self):
+        while(self._process_batch()):
+            self.conn.commit()
+    
+    def get_page(
+        self,
+        page_number: int,
+        page_size: int,
+        edge_limit: int
+    ) -> tuple[list[dict[str, Any]], list[tuple[int, int, float]]]:
+        if page_number < 0:
+            raise ValueError("page_number must be >= 0")
+        if page_size <= 0:
+            return [], []
+        if edge_limit < 0:
+            raise ValueError("edge_limit must be >= 0")
+
+        offset = page_number * page_size
+        cur = self.conn.cursor()
+
+        # Page nodes are ranked by their strongest incident edge.
+        cur.execute(f"""
+            SELECT
+                f.id,
+                f.file_path,
+                COALESCE(MAX(e.weight), 0.0) AS max_weight
+            FROM {self.FILES_TABLE} AS f
+            LEFT JOIN {self.EDGES_TABLE} AS e
+                ON e.node_1 = f.id OR e.node_2 = f.id
+            GROUP BY f.id, f.file_path
+            ORDER BY max_weight DESC, f.id ASC
+            LIMIT ? OFFSET ?;
+        """, (page_size, offset))
+
+        page_rows = cur.fetchall()
+        if not page_rows:
+            return [], []
+
+        page_ids = [row[0] for row in page_rows]
+        page_paths = {row[0]: row[1] for row in page_rows}
+
+        edges: list[tuple[int, int, float]] = []
+        seen_edges: set[tuple[int, int]] = set()
+
+        # Fetch the top edges for each page node.
+        if edge_limit > 0:
+            values_clause = ", ".join(["(?)"] * len(page_ids))
+
+            cur.execute(f"""
+                WITH page_nodes(id) AS (
+                    VALUES {values_clause}
+                ),
+                ranked_edges AS (
+                    SELECT
+                        pn.id AS source_id,
+                        e.node_1,
+                        e.node_2,
+                        e.weight,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY pn.id
+                            ORDER BY e.weight DESC, e.node_1 ASC, e.node_2 ASC
+                        ) AS rn
+                    FROM page_nodes pn
+                    JOIN {self.EDGES_TABLE} e
+                        ON e.node_1 = pn.id OR e.node_2 = pn.id
+                )
+                SELECT node_1, node_2, weight
+                FROM ranked_edges
+                WHERE rn <= ?
+                ORDER BY weight DESC, node_1 ASC, node_2 ASC;
+            """, (*page_ids, edge_limit))
+
+            for node_1, node_2, weight in cur.fetchall():
+                a, b = (node_1, node_2) if node_1 <= node_2 else (node_2, node_1)
+                edge_key = (a, b)
+                if edge_key not in seen_edges:
+                    seen_edges.add(edge_key)
+                    edges.append((node_1, node_2, float(weight)))
+
+        if not edges:
+            return [], [] #! if no duplicates, return NOTHING
+        
+        # Collect every node mentioned by those edges.
+        required_ids = set(page_ids)
+        for node_1, node_2, _ in edges:
+            required_ids.add(node_1)
+            required_ids.add(node_2)
+
+        # Query only the extra nodes that were not already fetched in the first query.
+        extra_ids = sorted(required_ids - set(page_ids))
+        extra_paths: dict[int, str] = {}
+
+        if extra_ids:
+            placeholders = ",".join(["?"] * len(extra_ids))
+            cur.execute(
+                f"""
+                SELECT id, file_path
+                FROM {self.FILES_TABLE}
+                WHERE id IN ({placeholders});
+                """,
+                extra_ids,
+            )
+            extra_paths = {row[0]: row[1] for row in cur.fetchall()}
+
+        nodes: list[dict[str, Any]] = []
+        for node_id in page_ids:
+            nodes.append({"id": node_id, "path": page_paths[node_id]})
+
+        for node_id in extra_ids:
+            path = extra_paths.get(node_id)
+            if path is not None:
+                nodes.append({"id": node_id, "path": path})
+
+        return nodes, edges
     
     def get_adjecency(self, path : str):
         id = self.get_node_id(path)

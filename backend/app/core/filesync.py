@@ -57,6 +57,23 @@ class fileSync:
                 await asyncio.sleep(max(0, settings.sync_interval*60 - elapsed))
         except asyncio.CancelledError:
             pass
+
+    def force_dd_sync(self):
+        self.dd_wake_event.set()
+
+    async def auto_sync_dd(self):
+        try:
+            while True:
+                try:
+                    await asyncio.wait_for(self.dd_wake_event.wait(), timeout=settings.sync_interval*60)
+                except asyncio.TimeoutError:
+                    pass
+
+                self.dd_wake_event.clear()
+                await files_db_service.sync_dd()
+        except asyncio.CancelledError:
+            pass
+
     def __init__(self):
         self.watch_dirs = set(self.load_dir())
         self.watch_dirs_lock = threading.RLock()
@@ -64,6 +81,8 @@ class fileSync:
         self.thread_lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self.cancel_queue = False
+
+        self.dd_wake_event = asyncio.Event()
     
     def add_dir(self, dir : str):
         try:
