@@ -632,9 +632,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
             <SliderField
               label="Duplicate similarity threshold"
-              description="Minimum similarity score (0–100%) to flag two files as duplicates. The cleanup graph maps this value to yellow and 100% similarity to red."
-              min={0.5}
-              max={0.95}
+              description="Minimum similarity score to flag two files as duplicates."
+              min={0.85}
+              max={0.99}
               step={0.01}
               value={duplicateSimilarityThreshold}
               onChange={setDuplicateSimilarityThreshold}

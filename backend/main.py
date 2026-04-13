@@ -18,9 +18,11 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     # this secion runs on app startup
     auto_sync_task = asyncio.create_task(file_syncer.auto_sync())
+    dd_auto_sync_task = asyncio.create_task(file_syncer.auto_sync_dd())
     yield
     # this secion runs on app shutdown
     auto_sync_task.cancel()
+    dd_auto_sync_task.cancel()
 
 
 def create_app() -> FastAPI:
