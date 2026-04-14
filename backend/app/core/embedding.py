@@ -1,5 +1,5 @@
 from typing import List
-from app.schemas import ChunkInput, EmbeddingOutput, EmbeddingResponse
+from app.schemas import ChunkInput
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from transformers import AutoModel, AutoProcessor
 import torch
@@ -143,7 +143,7 @@ class SBERTModel(EmbeddingModelInterface):
 
         with self.vram_lock:
             self.currently_embedding -= 1
-
+        
         return ordered_embds
 
 """
@@ -274,7 +274,7 @@ class CrossEncoderReranker:
     MAX_LENGTH = 1024
     
     def __init__(self):
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._device = "cpu"
         self.model = CrossEncoder("BAAI/bge-reranker-v2-m3", device=self._device)
     
     def rerank(self, query: str, candidates: List) -> list:

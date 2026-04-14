@@ -4,7 +4,7 @@ import { GlobalSearchBar } from "./components/GlobalSearchBar";
 import { RecentlyOpened } from "./components/RecentlyOpened";
 import { SearchResults } from "./components/SearchResults";
 import { SettingsModal } from "./components/SettingsModal";
-import { CleanupStorage } from "./components/CleanupStorage";
+import DuplicateGraph from "./components/CleanupStorage";
 import { StorageDonut } from "./components/StorageDonut";
 import { ActivityEmbedding } from "./components/ActivityEmbedding";
 import {
@@ -22,9 +22,13 @@ function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isReranking, setIsReranking] = useState(false);
+  const [resultsAnimationKey, setResultsAnimationKey] = useState(0);
   const [currentView, setCurrentView] = useState<View>("main");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [analytics, setAnalytics] = useState<{ [key: string]: number[] } | null>(null);
+  const [analytics, setAnalytics] = useState<{
+    [key: string]: number[];
+  } | null>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1024px)");
@@ -38,9 +42,23 @@ function Dashboard() {
     return () => mediaQuery.removeEventListener("change", handleBreakpoint);
   }, []);
 
-  const submitSearch = useCallback((results: any[]) => {
+  const submitInitialSearch = useCallback((results: any[]) => {
     setSearchResults(results);
     setIsSearching(false);
+    setIsReranking(true);
+  }, []);
+
+  const submitFinalSearch = useCallback((results: any[]) => {
+    setSearchResults(results);
+    setIsSearching(false);
+    setIsReranking(false);
+    setResultsAnimationKey((prev) => prev + 1);
+  }, []);
+
+  const failSearch = useCallback(() => {
+    setSearchResults([]);
+    setIsSearching(false);
+    setIsReranking(false);
   }, []);
 
   const startSearch = useCallback((query: string) => {
@@ -48,6 +66,7 @@ function Dashboard() {
       setSearchQuery(query);
       setSearchResults([]);
       setIsSearching(true);
+      setIsReranking(false);
       setCurrentView("search");
     }
   }, []);
@@ -77,7 +96,7 @@ function Dashboard() {
       <div className="flex min-h-0 flex-1">
         {/* Left Sidebar - Fixed */}
         <aside
-          className={`fixed left-0 top-0 z-10 h-screen w-[min(100%,300px)] flex-col border-r border-border bg-surface-elevated/95 shadow-soft backdrop-blur-sm transition-transform duration-300 ease-out lg:flex ${
+          className={`fixed left-0 top-0 z-10 flex h-screen w-[min(100%,300px)] flex-col border-r border-border bg-surface-elevated/95 shadow-soft backdrop-blur-sm transition-transform duration-300 ease-out ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -112,12 +131,18 @@ function Dashboard() {
                   </p>
                 </div>
                 <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[1.5rem] bg-surface-muted p-4">
-                  <StorageDonut usedTotalLabel={usedTotalLabel} analytics={analytics as any} />
+                  <StorageDonut
+                    usedTotalLabel={usedTotalLabel}
+                    analytics={analytics as any}
+                  />
                 </div>
               </section>
 
               <div className="rounded-[1.75rem] border border-border bg-surface-elevated p-4 shadow-soft">
-                <ActivityEmbedding onViewAll={goToEmbedding} onAnalyticsUpdate={setAnalytics} />
+                <ActivityEmbedding
+                  onViewAll={goToEmbedding}
+                  onAnalyticsUpdate={setAnalytics}
+                />
               </div>
             </div>
           </div>
@@ -175,7 +200,9 @@ function Dashboard() {
                       searchValue={searchValue}
                       onSearchValueChange={setSearchValue}
                       onSearchStart={startSearch}
-                      onSubmitSearch={submitSearch}
+                      onSubmitInitialSearch={submitInitialSearch}
+                      onSubmitFinalSearch={submitFinalSearch}
+                      onSearchFailed={failSearch}
                     />
                   </div>
                   <section className="rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
@@ -183,6 +210,8 @@ function Dashboard() {
                       query={searchQuery}
                       results={searchResults}
                       isLoading={isSearching}
+                      isReranking={isReranking}
+                      animationKey={resultsAnimationKey}
                     />
                   </section>
                 </div>
@@ -210,7 +239,7 @@ function Dashboard() {
                     <h2 className="text-center mb-4 text-3xl font-bold text-foreground">
                       Cleanup Storage
                     </h2>
-                    <CleanupStorage />
+                    <DuplicateGraph />
                   </section>
                 </div>
               ) : currentView === "embedding" ? (
@@ -248,7 +277,9 @@ function Dashboard() {
                         searchValue={searchValue}
                         onSearchValueChange={setSearchValue}
                         onSearchStart={startSearch}
-                        onSubmitSearch={submitSearch}
+                        onSubmitInitialSearch={submitInitialSearch}
+                        onSubmitFinalSearch={submitFinalSearch}
+                        onSearchFailed={failSearch}
                       />
                     </div>
                   </section>
@@ -279,7 +310,7 @@ function Dashboard() {
                       View all
                     </button>
                     <div className="mt-6">
-                      <CleanupStorage />
+                      <DuplicateGraph />
                     </div>
                   </section>
                 </div>

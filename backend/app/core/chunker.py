@@ -80,26 +80,60 @@ class ChunkingService:
     def chunk_document(self, pages: List[Dict]) -> List[Dict]:
         """
         Passes the user-defined size/overlap to the specific strategy.
+        Combines text across pages to hit large chunk limits, 
+        while accurately mapping the chunks back to their starting page.
         """
         final_chunks = []
         
+        if not pages:
+            return final_chunks
+            
+        # 1. Stitch all pages together and map character indices to page numbers
+        combined_text = ""
+        page_map = []
+        
         for page in pages:
-            text = page["text"]
-            page_num = page["page_number"]
+            start_idx = len(combined_text)
+            page_map.append((start_idx, page["page_number"]))
             
-            if settings.chunk_strategy == "recursive":
-                raw_chunks = self.chunk_recursive(text, settings.chunk_size, settings.chunk_overlap)
-            elif settings.chunk_strategy == "fixed":
-                raw_chunks = self.chunk_fixed(text, settings.chunk_size, settings.chunk_overlap)
-            else:
-                raise Exception("Invalid chunking strategy")
+            # Add the text and force a double newline to ensure paragraph breaks between pages
+            text = page.get("text", "")
+            combined_text += text + "\n\n"
             
-            for idx, chunk_text in enumerate(raw_chunks):
-                chunk_data = {
-                    "text": chunk_text,
-                    "page_number": page_num
-                }
+        # 2. Chunk the massive continuous string (Breaking the Page Barrier)
+        if settings.chunk_strategy == "recursive":
+            raw_chunks = self.chunk_recursive(combined_text, settings.chunk_size, settings.chunk_overlap)
+        elif settings.chunk_strategy == "fixed":
+            raw_chunks = self.chunk_fixed(combined_text, settings.chunk_size, settings.chunk_overlap)
+        else:
+            raise Exception("Invalid chunking strategy")
+            
+        # 3. Map the chunks back to their correct original pages
+        current_search_idx = 0
+        for chunk_text in raw_chunks:
+            # Grab a slice to search for (100 chars is safe against repeating words)
+            search_slice = chunk_text[:100] 
+            idx = combined_text.find(search_slice, current_search_idx)
+            
+            # Fallback if somehow not found (extremely rare edge case)
+            if idx == -1: 
+                idx = current_search_idx 
                 
-                final_chunks.append(chunk_data)
-                
+            # Determine which page this starting index belongs to
+            chunk_page_num = page_map[0][1]
+            for start_index, p_num in page_map:
+                if idx >= start_index:
+                    chunk_page_num = p_num
+                else:
+                    break # We passed the index, keep the last valid page
+                    
+            final_chunks.append({
+                "text": chunk_text,
+                "page_number": chunk_page_num
+            })
+            
+            # Advance the search index to avoid matching identical text from earlier pages
+            # We subtract overlap so we don't accidentally skip the start of the next chunk
+            current_search_idx = idx + max(1, len(chunk_text) - settings.chunk_overlap - 50)
+            
         return final_chunks
