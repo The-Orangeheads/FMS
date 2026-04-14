@@ -78,7 +78,7 @@ def image_query(chunk_input, score_correction : bool):
 async def unified_query(req: VectorQueryRequest):
     try:
         chunk_input = ChunkInput(text=req.text)
-        results = text_query(chunk_input) + image_query(chunk_input, True)
+        results = image_query(chunk_input, True)
         results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
         return {"results": results[:settings.top_k]}
