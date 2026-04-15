@@ -45,7 +45,7 @@ class SearchService:
         metadata = [r["metadata"] for r in unique]
         # model = embedding_service._get_model("bge-m3")
         # scores = model.compute_hybrid_score(query, candidates)
-            
+        
         t0 = time.time()
         logits = reranker.rerank(query, candidates)
         print(f"Reranker: {len(candidates)} candidates in {time.time() - t0:.2f}s")

@@ -107,7 +107,7 @@ function Dashboard() {
                   <img src={logo} alt="Shelf logo" className="h-12 w-12" />
                 </span>
                 <p className="text-2xl font-semibold leading-tight text-foreground">
-                  Shelf
+                  Lexica
                 </p>
               </div>
               <button
