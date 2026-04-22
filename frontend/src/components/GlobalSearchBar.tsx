@@ -71,6 +71,10 @@ export function GlobalSearchBar({
       try {
         const pickedPath = await electron.ipcRenderer.invoke("open-image-picker");
         if (!pickedPath) return;
+        
+        // Clear text search value when searching by image
+        onSearchValueChange(""); 
+        
         await runReverseImageSearch(pickedPath);
         return;
       } catch (error) {
@@ -148,22 +152,38 @@ export function GlobalSearchBar({
               <span className="absolute left-5 top-1/2 -translate-y-1/2 text-foreground-muted">
                 <IconSearch className="h-6 w-6" />
               </span>
-              <input
+                <input
                 id="global-search"
                 type="search"
                 value={searchValue}
                 onChange={(e) => onSearchValueChange(e.target.value)}
                 placeholder="Search by meaning, text, or metadata…"
-                className="w-full rounded-2xl border-0 bg-transparent py-5 pl-14 pr-5 text-lg text-foreground outline-none placeholder:text-foreground-muted/60"
+                className="w-full rounded-2xl border-0 bg-transparent py-5 pl-14 pr-12 text-lg text-foreground outline-none placeholder:text-foreground-muted/60 [&::-webkit-search-cancel-button]:hidden"
               />
+              {searchValue && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSearchValueChange("");
+                    document.getElementById("global-search")?.focus();
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Clear search"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
-          <button
+           <button
             type="button"
             title="Reverse image search"
             aria-label="Attach or search by image"
             onClick={handleImageSearch}
-            className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-border bg-surface-muted text-foreground-muted transition-all duration-200 hover:bg-primary/10 hover:text-primary hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-border bg-surface-muted text-foreground-muted transition-all duration-300 ease-material hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
           >
             <IconImageSearch className="h-6 w-6" />
           </button>

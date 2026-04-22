@@ -71,7 +71,11 @@ function Dashboard() {
     }
   }, []);
 
-  const goToMain = useCallback(() => setCurrentView("main"), []);
+  const goToMain = useCallback(() => {
+    setCurrentView("main");
+    setSearchValue("");
+    setSearchQuery("");
+  }, []);
   const goToRecents = useCallback(() => setCurrentView("recents"), []);
   const goToCleanup = useCallback(() => setCurrentView("cleanup"), []);
   const goToEmbedding = useCallback(() => setCurrentView("embedding"), []);
@@ -102,13 +106,15 @@ function Dashboard() {
         >
           <div className="flex-shrink-0 border-b border-border px-5 py-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-row items-center gap-3">
-                <span className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl">
-                  <img src={logo} alt="Shelf logo" className="h-12 w-12" />
+              <div className="flex flex-row items-center gap-2.5">
+                <span className="flex shrink-0 items-center justify-center">
+                  <img src={logo} alt="Lexica logo" className="h-[52px] w-[52px]" />
                 </span>
-                <p className="text-2xl font-semibold leading-tight text-foreground">
-                  Lexica
-                </p>
+                <div className="flex flex-col justify-center pt-1">
+                  <h1 className="font-spartan text-[38px] font-extrabold leading-[0.85] tracking-tight text-foreground">
+                    Lexica
+                  </h1>
+                </div>
               </div>
               <button
                 type="button"
@@ -227,7 +233,7 @@ function Dashboard() {
                     <RecentlyOpened />
                   </section>
                 </div>
-              ) : currentView === "cleanup" ? (
+                ) : currentView === "cleanup" ? (
                 <div key="cleanup" className="animate-slide-up">
                   <button
                     onClick={goToMain}
@@ -236,9 +242,12 @@ function Dashboard() {
                     Back
                   </button>
                   <section className="rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
-                    <h2 className="text-center mb-4 text-3xl font-bold text-foreground">
-                      Cleanup Storage
+                    <h2 className="text-center text-3xl font-bold text-foreground">
+                      Storage cleanup
                     </h2>
+                    <p className="mt-2 mb-6 text-center text-sm text-foreground-muted">
+                      Identify and remove duplicate files to free up disk space and optimize your storage.
+                    </p>
                     <DuplicateGraph />
                   </section>
                 </div>
@@ -251,9 +260,12 @@ function Dashboard() {
                     Back
                   </button>
                   <section className="rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
-                    <h2 className="text-center mb-4 text-3xl font-bold text-foreground">
+                    <h2 className="text-center text-3xl font-bold text-foreground">
                       Embedding activity
                     </h2>
+                    <p className="mt-2 mb-6 text-center text-sm text-foreground-muted">
+                      Monitor the real-time progress of AI preprocessing and vector embeddings for your files.
+                    </p>
                     <ActivityEmbedding onViewAll={goToEmbedding} showFull />
                   </section>
                 </div>
@@ -284,10 +296,13 @@ function Dashboard() {
                     </div>
                   </section>
 
-                  <section className="relative rounded-4xl border border-border bg-surface-elevated/90 p-6 shadow-soft">
+                   <section className="relative rounded-4xl border border-border bg-surface-elevated/90 p-6 shadow-soft">
                     <h2 className="text-center text-3xl font-bold text-foreground">
                       Recently opened
                     </h2>
+                    <p className="mt-2 text-center text-sm text-foreground-muted">
+                      Quickly jump back into your recently viewed files.
+                    </p>
                     <button
                       onClick={goToRecents}
                       className="absolute top-8 right-6 text-sm font-bold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -299,10 +314,13 @@ function Dashboard() {
                     </div>
                   </section>
 
-                  <section className="relative rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
+                   <section className="relative rounded-[2rem] border border-border bg-surface-elevated/90 p-6 shadow-soft">
                     <h2 className="text-center text-3xl font-bold text-foreground">
                       Storage cleanup
                     </h2>
+                    <p className="mt-2 text-center text-sm text-foreground-muted">
+                      Identify and remove duplicate files to free up disk space and optimize your storage.
+                    </p>
                     <button
                       onClick={goToCleanup}
                       className="absolute top-8 right-6 text-sm font-bold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

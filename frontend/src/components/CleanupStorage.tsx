@@ -13,6 +13,10 @@ import {
   readDuplicateSimilarityThreshold,
   SFM_SETTINGS_CHANGED_EVENT,
 } from "../libs/sfmSettingsClient";
+import { IconFileText, IconFileImage } from "./icons";
+import { getCachedThumbnail, setCachedThumbnail } from "../libs/thumbnailCache";
+import { getPdfPreview } from "../libs/pdfPreview";
+
 
 // --- FORMATTING UTILS ---
 function formatBytes(bytes: number, decimals = 1): string {
@@ -234,6 +238,69 @@ function calcLayout(nodes: FileNode[], edges: SimilarityEdge[]): LayoutNode[] {
   }
 
   return pos;
+}
+
+function CleanupThumb({ 
+  path, 
+  containerClass = "h-10 w-10 rounded-lg border border-border bg-surface-muted", 
+  iconClass = "h-5 w-5 text-foreground-muted opacity-40" 
+}: { 
+  path: string, 
+  containerClass?: string,
+  iconClass?: string 
+}) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(path);
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    const loadThumb = async () => {
+      if (!path) return;
+      const cached = await getCachedThumbnail(path);
+      if (cached && isMounted) {
+        setPreview(cached);
+        return;
+      }
+
+      const electron = (window as any).require ? (window as any).require("electron") : null;
+      try {
+        if (electron?.nativeImage) {
+          const thumb = await electron.nativeImage.createThumbnailFromPath(path, { width: 256, height: 256 });
+          if (!thumb.isEmpty() && isMounted) {
+            const dataUrl = thumb.toDataURL();
+            setPreview(dataUrl);
+            await setCachedThumbnail(path, dataUrl);
+            return;
+          }
+        }
+      } catch (error) {}
+
+      if (path.toLowerCase().endsWith(".pdf") && isMounted) {
+        const pdfThumb = await getPdfPreview(path);
+        if (pdfThumb && isMounted) {
+          setPreview(pdfThumb);
+          await setCachedThumbnail(path, pdfThumb);
+        }
+      }
+    };
+    loadThumb();
+    return () => { isMounted = false; };
+  }, [path]);
+
+  if (preview) {
+    return (
+      <span className={`flex shrink-0 overflow-hidden ${containerClass}`}>
+        <img src={preview} alt="" className="h-full w-full object-cover" />
+      </span>
+    );
+  }
+
+  return (
+    <span className={`flex shrink-0 items-center justify-center ${containerClass}`}>
+      {isImage ? <IconFileImage className={iconClass} /> : <IconFileText className={iconClass} />}
+    </span>
+  );
 }
 
 export default function DuplicateGraph() {
@@ -663,15 +730,19 @@ export default function DuplicateGraph() {
                       style={{ left: `${node.x}%`, top: `${node.y}%` }}
                     >
                       <div className={`relative flex flex-col items-center transition-[transform,opacity] duration-500 ease-material ${isDimmed ? "scale-[0.88] opacity-[0.22]" : "scale-100 opacity-100"}`}>
-                        <button
+                      <button
                           type="button"
                           data-node-btn="true"
                           onClick={() => handleNodeClick(node.id)}
-                          className={`relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full shadow-soft transition-[colors,box-shadow,transform] duration-300 ease-material hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated active:scale-95 ${!isDimmed ? "hover:scale-[1.04]" : ""}
-                        ${isFocused ? "bg-primary text-on-primary shadow-card" : "bg-surface-elevated text-foreground ring-1 ring-border"}
+                          className={`relative flex h-20 w-20 overflow-hidden shrink-0 items-center justify-center rounded-full shadow-soft transition-[colors,box-shadow,transform,box-shadow] duration-300 ease-material hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-elevated active:scale-95 ${!isDimmed ? "hover:scale-[1.04]" : ""}
+                        ${isFocused ? "ring-4 ring-primary shadow-card" : "ring-4 ring-border/50 bg-surface-elevated"}
                       `}
                         >
-                          <File size={36} />
+                          <CleanupThumb 
+                            path={node.path} 
+                            containerClass="h-full w-full bg-surface-elevated" 
+                            iconClass="h-8 w-8 text-foreground-muted opacity-40" 
+                          />
                         </button>
                         <div className="pointer-events-none absolute left-1/2 top-[calc(100%+0.75rem)] z-10 max-w-[min(200px,40vw)] -translate-x-1/2 truncate rounded-full border border-border bg-surface-elevated/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-soft backdrop-blur-sm sm:text-sm">
                           {node.name}
@@ -702,11 +773,13 @@ export default function DuplicateGraph() {
           <>
             <div className="shrink-0 border-b border-border p-4 sm:p-5">
               <div className="mb-4 flex items-start justify-between gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-soft">
-                  <File size={22} />
-                </div>
+                <CleanupThumb 
+                  path={displayNode.path} 
+                  containerClass="h-14 w-14 shrink-0 rounded-xl border border-border bg-surface-muted shadow-soft" 
+                  iconClass="h-6 w-6 text-foreground-muted opacity-40" 
+                />
                 
-                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={async () => {
@@ -718,10 +791,9 @@ export default function DuplicateGraph() {
                         console.error("Failed to open file:", error);
                       }
                     }}
-                    className="flex h-9 items-center justify-center gap-2 rounded-full bg-surface-muted px-4 text-sm font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-elevated hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex h-9 items-center justify-center rounded-full bg-surface-muted px-4 text-sm font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-elevated hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label="Open selected file"
                   >
-                    <ExternalLink size={14} />
                     <span>Open</span>
                   </button>
                   <button
@@ -779,8 +851,8 @@ export default function DuplicateGraph() {
                         <Check size={14} strokeWidth={3} />
                       </button>
 
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-elevated text-foreground-muted shadow-sm">
-                        <File size={16} />
+                      <div className="mt-0.5">
+                        <CleanupThumb path={node.path} />
                       </div>
 
                       <div className="min-w-0 flex-1">

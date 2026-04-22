@@ -3,9 +3,10 @@ export default {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
-    extend: {
+  extend: {
       fontFamily: {
         sans: ['Roboto', 'system-ui', 'sans-serif'],
+        spartan: ['"League Spartan"', 'sans-serif'],
       },
       colors: {
         surface: 'var(--color-surface)',

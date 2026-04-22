@@ -168,18 +168,21 @@ export function RecentlyOpened({
   return (
     <div className="space-y-4">
       {!hideHeader && (
-        <div className="mb-4 flex items-end justify-between gap-4">
+        <div className="relative mb-8 text-center">
           <h2
             id="recent-heading"
-            className="flex-1 text-center text-3xl font-bold text-foreground"
+            className="text-3xl font-bold text-foreground"
           >
             Recently opened
           </h2>
+          <p className="mt-2 text-sm text-foreground-muted">
+            Quickly jump back into your recently viewed files.
+          </p>
           {showViewAll && onViewAll ? (
             <button
               type="button"
               onClick={onViewAll}
-              className="text-sm font-medium text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="absolute right-0 top-2 text-sm font-bold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               View all
             </button>
@@ -188,7 +191,7 @@ export function RecentlyOpened({
             <button
               type="button"
               onClick={() => writeRecents([])}
-              className="text-sm font-medium text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="absolute right-0 top-2 text-sm font-bold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               Clear history
             </button>
