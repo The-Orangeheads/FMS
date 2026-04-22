@@ -267,6 +267,7 @@ export default function DuplicateGraph() {
   const [duplicateThreshold, setDuplicateThreshold] = useState(readDuplicateSimilarityThreshold);
 
   // --- DATA FETCHING ---
+// --- DATA FETCHING ---
   const fetchPage = useCallback(async (page: number) => {
     setIsLoading(true);
     setGraphNodes([]);
@@ -288,20 +289,6 @@ export default function DuplicateGraph() {
       
       const data = await response.json();
 
-      // Transform backend nodes to internal format
-      const formattedNodes: FileNode[] = (data.nodes || []).map((node: any) => {
-        // Extract filename from path (handles both / and \ separators)
-        const fileName = String(node.path).split(/[/\\]/).pop() || "Unknown File";
-        
-        return {
-          id: node.id,
-          name: fileName,
-          path: node.path,
-          size: node.file_size,
-          date: node.modify_date,
-        };
-      });
-
       // Transform backend edges [source, target, similarity] to internal format
       const formattedEdges: SimilarityEdge[] = (data.edges || []).map((edge: any, index: number) => ({
         id: index, // Backend doesn't provide edge ID, generating one
@@ -309,6 +296,29 @@ export default function DuplicateGraph() {
         target: edge[1],
         similarity: edge[2],
       }));
+
+      // Create a Set containing all node IDs that have at least one edge
+      const nodesWithEdges = new Set<number>();
+      formattedEdges.forEach((edge) => {
+        nodesWithEdges.add(edge.source);
+        nodesWithEdges.add(edge.target);
+      });
+
+      // Transform backend nodes to internal format AND filter out isolated nodes
+      const formattedNodes: FileNode[] = (data.nodes || [])
+        .filter((node: any) => nodesWithEdges.has(node.id)) // <-- NEW FILTER HERE
+        .map((node: any) => {
+          // Extract filename from path (handles both / and \ separators)
+          const fileName = String(node.path).split(/[/\\]/).pop() || "Unknown File";
+          
+          return {
+            id: node.id,
+            name: fileName,
+            path: node.path,
+            size: node.file_size,
+            date: node.modify_date,
+          };
+        });
 
       setGraphNodes(formattedNodes);
       setGraphEdges(formattedEdges);

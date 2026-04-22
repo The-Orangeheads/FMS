@@ -62,6 +62,69 @@ type SearchResultsProps = {
   animationKey?: number;
 };
 
+function ResultThumb({ path, type }: { path: string; type: "image" | "text" }) {
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    const loadThumb = async () => {
+      const electron = (window as any).require ? (window as any).require("electron") : null;
+      if (!electron?.nativeImage || !path) return;
+
+      try {
+        const thumb = await electron.nativeImage.createThumbnailFromPath(path, { 
+          width: 256, 
+          height: 256 
+        });
+        
+        if (!thumb.isEmpty() && isMounted) {
+          setPreview(thumb.toDataURL());
+        }
+      } catch (error) {
+        // Fall back to clean icons if thumbnail generation fails
+      }
+    };
+
+    loadThumb();
+
+    return () => { 
+      isMounted = false; 
+    };
+  }, [path]);
+
+  // 1. Image preview if available
+  if (preview) {
+    return (
+      <span className="flex h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border bg-surface-muted">
+        <img 
+          src={preview} 
+          alt="" 
+          className="h-full w-full object-cover" 
+        />
+      </span>
+    );
+  }
+
+  // 2. Minimal clean fallback UI
+  return (
+    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-muted text-foreground-muted/40">
+      {type === "text" ? (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+      ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
 export function SearchResults({
   query,
   results,
@@ -195,19 +258,7 @@ export function SearchResults({
                 isReranking ? "animate-pulse" : "hover:shadow-card",
               ].join(" ")}
             >
-              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-surface-muted">
-                {r.type === "text" ? (
-                  <span className="relative flex h-11 w-9 flex-col rounded border border-foreground/10 bg-surface-elevated">
-                    <span className="mx-1 mt-1 h-1 w-4 rounded-sm bg-foreground/15" />
-                    <span className="mx-1 mt-0.5 h-px w-full bg-foreground/10" />
-                    <IconFileText className="m-auto h-7 w-7 text-primary" />
-                  </span>
-                ) : (
-                  <span className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-md border border-primary/20 bg-gradient-to-br from-primary/20 to-emerald-400/10">
-                    <IconFileImage className="h-8 w-8 text-primary/90" />
-                  </span>
-                )}
-              </span>
+            <ResultThumb path={r.path} type={r.type} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium text-foreground">
                   {r.name}
