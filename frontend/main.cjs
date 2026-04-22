@@ -90,6 +90,17 @@ ipcMain.handle('get-file-thumbnail', async (_event, filePath) => {
     return null;
 });
 
+ipcMain.handle('read-file-buffer', async (_event, filePath) => {
+  const fs = require('fs').promises;
+  try {
+    const buffer = await fs.readFile(filePath);
+    return buffer; 
+  } catch (error) {
+    console.error("Failed to read file for PDF preview:", error);
+    return null;
+  }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {

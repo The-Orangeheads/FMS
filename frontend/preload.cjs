@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld('electron', {
         'open-directory-picker', 
         'open-image-picker', 
         'open-file-in-os',
-        'get-file-thumbnail' // New channel for thumbnails!
+        'get-file-thumbnail',
+        'read-file-buffer'
       ];
       
       if (validChannels.includes(channel)) {
