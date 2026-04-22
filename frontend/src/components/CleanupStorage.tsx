@@ -214,14 +214,18 @@ export default function DuplicateGraph() {
   const [graphFitScale, setGraphFitScale] = useState(1);
   const [duplicateThreshold, setDuplicateThreshold] = useState(readDuplicateSimilarityThreshold);
 
+  const [hasFailed, setHasFailed] = useState(false); // Track if a retry is active
+  const activePageRef = useRef<number>(0); // Ensure retries match the current page
+
   // --- DATA FETCHING ---
-// --- DATA FETCHING ---
   const fetchPage = useCallback(async (page: number) => {
     setIsLoading(true);
+    setHasFailed(false);
+    activePageRef.current = page;
+    
+    // Reset local UI states
     setGraphNodes([]);
     setGraphEdges([]);
-    
-    // Reset local UI states when fetching new data
     setActiveNodeId(null);
     setDisplayNode(null);
     setPanelShown(false);
@@ -229,52 +233,63 @@ export default function DuplicateGraph() {
     setSelectedForDeletion(new Set());
     hadOpenPanelRef.current = false;
 
-    try {
-      const response = await fetch(`${API_URL}/api/duplicates/get_dupes?page=${page}`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch duplicates data");
-      }
-      
-      const data = await response.json();
+    const performFetch = async () => {
+      // If the user has changed the page while we were retrying, stop this loop
+      if (activePageRef.current !== page) return;
 
-      // Transform backend edges [source, target, similarity] to internal format
-      const formattedEdges: SimilarityEdge[] = (data.edges || []).map((edge: any, index: number) => ({
-        id: index, // Backend doesn't provide edge ID, generating one
-        source: edge[0],
-        target: edge[1],
-        similarity: edge[2],
-      }));
+      try {
+        const response = await fetch(`${API_URL}/api/duplicates/get_dupes?page=${page}`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch duplicates data");
+        }
+        
+        const data = await response.json();
 
-      // Create a Set containing all node IDs that have at least one edge
-      const nodesWithEdges = new Set<number>();
-      formattedEdges.forEach((edge) => {
-        nodesWithEdges.add(edge.source);
-        nodesWithEdges.add(edge.target);
-      });
+        // Transform backend edges [source, target, similarity] to internal format
+        const formattedEdges: SimilarityEdge[] = (data.edges || []).map((edge: any, index: number) => ({
+          id: index,
+          source: edge[0],
+          target: edge[1],
+          similarity: edge[2],
+        }));
 
-      // Transform backend nodes to internal format AND filter out isolated nodes
-      const formattedNodes: FileNode[] = (data.nodes || [])
-        .filter((node: any) => nodesWithEdges.has(node.id)) // <-- NEW FILTER HERE
-        .map((node: any) => {
-          // Extract filename from path (handles both / and \ separators)
-          const fileName = String(node.path).split(/[/\\]/).pop() || "Unknown File";
-          
-          return {
-            id: node.id,
-            name: fileName,
-            path: node.path,
-            size: node.file_size,
-            date: node.modify_date,
-          };
+        const nodesWithEdges = new Set<number>();
+        formattedEdges.forEach((edge) => {
+          nodesWithEdges.add(edge.source);
+          nodesWithEdges.add(edge.target);
         });
 
-      setGraphNodes(formattedNodes);
-      setGraphEdges(formattedEdges);
-    } catch (error) {
-      console.error("Error fetching duplicates:", error);
-    } finally {
-      setIsLoading(false);
-    }
+        // Transform backend nodes and filter isolated nodes
+        const formattedNodes: FileNode[] = (data.nodes || [])
+          .filter((node: any) => nodesWithEdges.has(node.id))
+          .map((node: any) => {
+            const fileName = String(node.path).split(/[/\\]/).pop() || "Unknown File";
+            return {
+              id: node.id,
+              name: fileName,
+              path: node.path,
+              size: node.file_size,
+              date: node.modify_date,
+            };
+          });
+
+        if (activePageRef.current === page) {
+          setGraphNodes(formattedNodes);
+          setGraphEdges(formattedEdges);
+          setIsLoading(false); // Only stop loading on success
+          setHasFailed(false);
+        }
+      } catch (error) {
+        console.error("Error fetching duplicates, retrying in 3s...", error);
+        if (activePageRef.current === page) {
+          setHasFailed(true);
+          // Keep isLoading(true) and try again after a delay
+          setTimeout(performFetch, 3000);
+        }
+      }
+    };
+
+    performFetch();
   }, []);
 
   // Fetch initial page on mount
@@ -495,8 +510,17 @@ export default function DuplicateGraph() {
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-surface-muted/20 backdrop-blur-[2px]">
           <Loader2 className="animate-spin text-primary mb-3" size={42} />
           <p className="text-sm font-medium text-foreground">
-            {isLoading ? "Fetching file duplicates..." : "Calculating visual layout..."}
+            {isCalculating 
+              ? "Calculating visual layout..." 
+              : hasFailed 
+                ? "Retring to fetch file duplicates..." 
+                : "Fetching file duplicates..."}
           </p>
+          {hasFailed && !isCalculating && (
+            <p className="mt-2 text-xs text-foreground-muted animate-pulse">
+              Taking longer than expected to respond.
+            </p>
+          )}
         </div>
       )}
 

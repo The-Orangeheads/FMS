@@ -12,7 +12,7 @@ type RecentEntry = {
 
 const RECENTS_KEY = "shelf-recently-opened";
 const RECENTS_UPDATED_EVENT = "shelf-recently-opened-updated";
-const RECENTS_LIMIT = 12;
+const RECENTS_LIMIT = 16;
 
 function getFileName(path: string) {
   return path.split(/[/\\]/).filter(Boolean).pop() || path;

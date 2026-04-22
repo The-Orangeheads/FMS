@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { IconMoon, IconPlus, IconSun, IconTrash } from "./icons";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -94,6 +94,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     useState(initialSettings.duplicateSimilarityThreshold);
   const [dirs, setDirs] = useState<string[]>([]);
   const [dirsLoading, setDirsLoading] = useState(false);
+  const [dirsFailed, setDirsFailed] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Store committed values to reset on cancel
   const [committedValues, setCommittedValues] = useState(initialSettings);
@@ -174,20 +176,29 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     onClose();
   };
 
-  const refreshTrackedDirectories = async () => {
+  const refreshTrackedDirectories = useCallback(async () => {
     setDirsLoading(true);
-    try {
-      const data = await fetch(`${API_URL}/api/directory/paths`).then((res) =>
-        res.json(),
-      );
-      setDirs(data.dirs || []);
-    } catch (err) {
-      console.error("Failed to load tracked directories:", err);
-      setDirs([]);
-    } finally {
-      setDirsLoading(false);
-    }
-  };
+    setDirsFailed(false);
+
+    const performFetch = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/directory/paths`);
+        if (!response.ok) throw new Error("Failed to fetch");
+        
+        const data = await response.json();
+        setDirs(data.dirs || []);
+        setDirsLoading(false);
+        setDirsFailed(false);
+      } catch (err) {
+        console.error("Failed to load tracked directories, retrying...", err);
+        setDirsFailed(true);
+        // Keep dirsLoading(true) and retry after a delay
+        setTimeout(performFetch, 3000);
+      }
+    };
+
+    void performFetch();
+  }, []);
 
   useEffect(() => {
     // Load settings only once on component mount
@@ -201,6 +212,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }, [open]);
 
+  useEffect(() => {
+    // Reset scroll position when modal closes
+    if (!open && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [open]);
+
   const handleAddDirectory = async () => {
     if (!window.electron) return;
 
@@ -211,7 +229,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       if (path) {
         // Send the absolute path to your FastAPI backend
         const response = await fetch(
-          "http://localhost:8000/api/directory/paths",
+          `${API_URL}/api/directory/paths`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -229,7 +247,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   };
   const handleRemoveDirectory = async (path: string) => {
     setDirsLoading(true);
-    await fetch(`http://localhost:8000/api/directory/paths`, {
+    await fetch(`${API_URL}/api/directory/paths`, {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
@@ -341,9 +359,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
           </button>
-        </div>
+            </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+            <div 
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto px-6 py-6"
+            >
           <fieldset className="mb-8 border-0 p-0">
             <legend className="mb-3 text-sm font-semibold text-foreground">
               Appearance
@@ -389,7 +410,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <ul className="mb-4 divide-y divide-border rounded-xl border border-border bg-surface-muted/50">
                 {dirsLoading ? (
                   <li className="px-4 py-3 text-sm text-foreground-muted">
-                    Loading tracked directories...
+                    <span className="inline-block animate-pulse">
+                      {dirsFailed ? "Retrying to load tracked directories..." : "Loading tracked directories..."}
+                    </span>
                   </li>
                 ) : Array.from(new Set(dirs)).length === 0 ? (
                   <li className="px-4 py-3 text-sm text-foreground-muted">
