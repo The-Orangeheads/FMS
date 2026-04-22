@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { IconFileImage, IconFileText } from "./icons";
+import { getCachedThumbnail, setCachedThumbnail } from "../libs/thumbnailCache";
 import { addRecentlyOpened } from "./RecentlyOpened";
+import { getPdfPreview } from "../libs/pdfPreview";
+import { IconFileText, IconFileImage } from "./icons";
 
 export type ResultRow = {
   name: string;
@@ -69,20 +71,43 @@ function ResultThumb({ path, type }: { path: string; type: "image" | "text" }) {
     let isMounted = true;
     
     const loadThumb = async () => {
+      if (!path) return;
+
+      // 1. Check cache first!
+      const cached = await getCachedThumbnail(path);
+      if (cached && isMounted) {
+        setPreview(cached);
+        return;
+      }
+
       const electron = (window as any).require ? (window as any).require("electron") : null;
-      if (!electron?.nativeImage || !path) return;
 
       try {
-        const thumb = await electron.nativeImage.createThumbnailFromPath(path, { 
-          width: 256, 
-          height: 256 
-        });
-        
-        if (!thumb.isEmpty() && isMounted) {
-          setPreview(thumb.toDataURL());
+        if (electron?.nativeImage) {
+          // 2. Try OS native thumbnail
+          const thumb = await electron.nativeImage.createThumbnailFromPath(path, { 
+            width: 256, 
+            height: 256 
+          });
+          
+          if (!thumb.isEmpty() && isMounted) {
+            const dataUrl = thumb.toDataURL();
+            setPreview(dataUrl);
+            await setCachedThumbnail(path, dataUrl); // Save to cache
+            return;
+          }
         }
       } catch (error) {
-        // Fall back to clean icons if thumbnail generation fails
+        // Fallback
+      }
+
+      // 3. Fallback for PDFs
+      if (path.toLowerCase().endsWith(".pdf") && isMounted) {
+        const pdfThumb = await getPdfPreview(path);
+        if (pdfThumb && isMounted) {
+          setPreview(pdfThumb);
+          await setCachedThumbnail(path, pdfThumb); // Save to cache
+        }
       }
     };
 
@@ -108,18 +133,11 @@ function ResultThumb({ path, type }: { path: string; type: "image" | "text" }) {
 
   // 2. Minimal clean fallback UI
   return (
-    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-muted text-foreground-muted/40">
+    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-muted text-foreground-muted opacity-40">
       {type === "text" ? (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
-          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
+        <IconFileText className="h-6 w-6" />
       ) : (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <polyline points="21 15 16 10 5 21" />
-        </svg>
+        <IconFileImage className="h-6 w-6" />
       )}
     </span>
   );

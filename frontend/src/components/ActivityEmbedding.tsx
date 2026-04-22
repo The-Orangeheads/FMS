@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState, type MouseEvent, memo } from "react";
-import { IconFileText } from "./icons";
+import { IconFileText, IconFileImage } from "./icons";
+
+function getFileType(filename: string): "image" | "text" {
+  if (!filename) return "text";
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(filename) ? "image" : "text";
+}
 
 type Completed = { id: string; name: string; durationLabel: string };
 type Queued = { id: string; name: string };
@@ -543,8 +548,12 @@ export function ActivityEmbedding({
         {!showFull && active && (
           <li key={active.id}>
             <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                <IconFileText className="h-4 w-4" />
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                {getFileType(active.name) === "image" ? (
+                  <IconFileImage className="h-4 w-4" />
+                ) : (
+                  <IconFileText className="h-4 w-4" />
+                )}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">
@@ -582,8 +591,12 @@ export function ActivityEmbedding({
             .map((job) => (
               <li key={job.id}>
                 <div className="flex items-start gap-3 opacity-90">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-foreground-muted">
-                    <IconFileText className="h-4 w-4" />
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-foreground-muted">
+                    {getFileType(job.name) === "image" ? (
+                      <IconFileImage className="h-4 w-4" />
+                    ) : (
+                      <IconFileText className="h-4 w-4" />
+                    )}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">
@@ -607,8 +620,12 @@ export function ActivityEmbedding({
           history.slice(0, adjustedVisibleHistoryCount).map((job) => (
             <li key={job.id}>
               <div className="flex items-start gap-3 opacity-45">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-foreground-muted">
-                  <IconFileText className="h-4 w-4" />
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-muted text-foreground-muted">
+                  {getFileType(job.name) === "image" ? (
+                    <IconFileImage className="h-4 w-4" />
+                  ) : (
+                    <IconFileText className="h-4 w-4" />
+                  )}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">
