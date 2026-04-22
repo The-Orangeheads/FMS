@@ -3,6 +3,7 @@ import { getCachedThumbnail, setCachedThumbnail } from "../libs/thumbnailCache";
 import { addRecentlyOpened } from "./RecentlyOpened";
 import { getPdfPreview } from "../libs/pdfPreview";
 import { IconFileText, IconFileImage } from "./icons";
+import toast from "react-hot-toast";
 
 export type ResultRow = {
   name: string;
@@ -80,28 +81,21 @@ function ResultThumb({ path, type }: { path: string; type: "image" | "text" }) {
         return;
       }
 
-      const electron = (window as any).require ? (window as any).require("electron") : null;
-
       try {
-        if (electron?.nativeImage) {
-          // 2. Try OS native thumbnail
-          const thumb = await electron.nativeImage.createThumbnailFromPath(path, { 
-            width: 256, 
-            height: 256 
-          });
+        if (window.electron?.ipcRenderer) {
+          const dataUrl = await window.electron.ipcRenderer.invoke('get-file-thumbnail', path);
           
-          if (!thumb.isEmpty() && isMounted) {
-            const dataUrl = thumb.toDataURL();
+          if (dataUrl && isMounted) {
             setPreview(dataUrl);
             await setCachedThumbnail(path, dataUrl); // Save to cache
             return;
           }
         }
       } catch (error) {
-        // Fallback
+        // OS thumbnail failed, move to fallback
       }
 
-      // 3. Fallback for PDFs
+      // 2. Fallback for PDFs
       if (path.toLowerCase().endsWith(".pdf") && isMounted) {
         const pdfThumb = await getPdfPreview(path);
         if (pdfThumb && isMounted) {
@@ -151,9 +145,6 @@ export function SearchResults({
   animationKey = 0,
 }: SearchResultsProps) {
   const [showRerankingBadge, setShowRerankingBadge] = useState(false);
-  const electron = (window as any).require
-    ? (window as any).require("electron")
-    : null;
   const q = query.trim();
   const isImagePathQuery =
     (q.includes("\\") || q.includes("/")) &&
@@ -262,13 +253,17 @@ export function SearchResults({
           <li key={`${r.path}-${r.name}`}>
             <button
               type="button"
-              onDoubleClick={async () => {
-                if (!electron?.ipcRenderer || !r.path) return;
+                onDoubleClick={async () => {
+                if (!window.electron?.ipcRenderer) return;
                 try {
-                  await electron.ipcRenderer.invoke("open-file-in-os", r.path);
+                  const res = await window.electron.ipcRenderer.invoke("open-file-in-os", r.path);
+                  if (!res?.ok) {
+                    toast.error("Could not open file. It may have been moved or deleted.");
+                    return;
+                  }
                   addRecentlyOpened(r.path);
                 } catch (error) {
-                  console.error("Failed to open file:", error);
+                  toast.error("Failed to communicate with the operating system.");
                 }
               }}
               className={[

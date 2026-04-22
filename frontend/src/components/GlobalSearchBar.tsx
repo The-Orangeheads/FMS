@@ -1,5 +1,7 @@
 import { useRef } from "react";
 import { IconImageSearch, IconSearch } from "./icons";
+import { API_URL } from "../config";
+import toast from "react-hot-toast";
 
 type GlobalSearchBarProps = {
   onOpenSettings: () => void;
@@ -20,15 +22,12 @@ export function GlobalSearchBar({
   onSearchFailed,
 }: GlobalSearchBarProps) {
   const activeRequestId = useRef(0);
-  const electron = (window as any).require
-    ? (window as any).require("electron")
-    : null;
 
   const runReverseImageSearch = async (selectedPath: string) => {
     const requestId = ++activeRequestId.current;
     onSearchStart(selectedPath);
     try {
-      let res = await fetch("http://localhost:8000/api/image/query", {
+      let res = await fetch(`${API_URL}/api/image/query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -40,7 +39,7 @@ export function GlobalSearchBar({
 
       // Compatibility fallback for current backend route naming.
       if (!res.ok && res.status === 404) {
-        res = await fetch("http://localhost:8000/api/vectors/image/query", {
+        res = await fetch(`${API_URL}/api/vectors/image/query`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -67,9 +66,9 @@ export function GlobalSearchBar({
   };
 
   const handleImageSearch = async () => {
-    if (electron?.ipcRenderer) {
+    if (window.electron?.ipcRenderer) {
       try {
-        const pickedPath = await electron.ipcRenderer.invoke("open-image-picker");
+        const pickedPath = await window.electron.ipcRenderer.invoke("open-image-picker");
         if (!pickedPath) return;
         
         // Clear text search value when searching by image
@@ -79,6 +78,7 @@ export function GlobalSearchBar({
         return;
       } catch (error) {
         console.error("Electron image picker failed:", error);
+        toast.error("Failed to open the image picker.");
       }
     }
   };
@@ -90,7 +90,7 @@ export function GlobalSearchBar({
     onSearchStart(searchValue);
 
     try {
-      const initialRes = await fetch('http://localhost:8000/api/vectors/unified/query', {
+      const initialRes = await fetch(`${API_URL}/api/vectors/unified/query`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -109,7 +109,7 @@ export function GlobalSearchBar({
       if (requestId !== activeRequestId.current) return;
       onSubmitInitialSearch(initialData.results || []);
 
-      const finalRes = await fetch('http://localhost:8000/api/vectors/unified/query', {
+      const finalRes = await fetch(`${API_URL}/api/vectors/unified/query`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,6 +129,7 @@ export function GlobalSearchBar({
       onSubmitFinalSearch(finalData.results || []);
     } catch (error) {
       console.error('Backend search failed:', error);
+      toast.error("Search failed. Ensure the local server is running.");
       if (requestId !== activeRequestId.current) return;
       onSearchFailed();
     }

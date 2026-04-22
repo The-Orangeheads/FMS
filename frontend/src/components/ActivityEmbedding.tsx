@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type MouseEvent, memo } from "react";
 import { IconFileText, IconFileImage } from "./icons";
+import { API_URL, WS_URL } from "../config";
+import toast from "react-hot-toast";
 
 function getFileType(filename: string): "image" | "text" {
   if (!filename) return "text";
@@ -42,7 +44,6 @@ type BackendMessage =
 const HISTORY_KEY = "shelf-embedding-history";
 const HISTORY_UPDATED_EVENT = "shelf-embedding-history-updated";
 const EMBEDDING_UI_UPDATED_EVENT = "shelf-embedding-ui-updated";
-const WS_URL = "ws://localhost:8000/ws";
 
 let sharedSocket: WebSocket | null = null;
 let reconnectAttempts = 0;
@@ -294,7 +295,7 @@ async function triggerSharedSync() {
   sharedState = { ...sharedState, resyncing: true, error: null };
   broadcastUiState();
   try {
-    const response = await fetch("http://localhost:8000/api/directory/sync", {
+    const response = await fetch(`${API_URL}/api/directory/sync`, {
       method: "POST",
     });
     if (!response.ok) {
@@ -302,6 +303,7 @@ async function triggerSharedSync() {
     }
   } catch (err) {
     console.error("Sync failed:", err);
+    toast.error("Failed to connect to the local sync server.");
     sharedState = {
       ...sharedState,
       error: "Failed to start sync. Please try again.",

@@ -5,6 +5,7 @@ import {
   SFM_SETTINGS_STORAGE_KEY as SETTINGS_STORAGE_KEY,
   notifySfmSettingsChanged,
 } from "../libs/sfmSettingsClient";
+import { API_URL } from "../config";
 
 type SettingsModalProps = {
   open: boolean;
@@ -69,10 +70,6 @@ function persistFrontendSettings(settings: Settings) {
   window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }
 
-const electron = (window as any).require
-  ? (window as any).require("electron")
-  : null;
-
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const titleId = useId();
   const { theme, setTheme } = useTheme();
@@ -118,7 +115,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setDuplicateSimilarityThreshold(localSettings.duplicateSimilarityThreshold);
 
     try {
-      const response = await fetch("http://localhost:8000/api/config/");
+      const response = await fetch(`${API_URL}/api/config/`);
       if (response.ok) {
         const data = await response.json();
         const newValues: Settings = {
@@ -180,7 +177,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const refreshTrackedDirectories = async () => {
     setDirsLoading(true);
     try {
-      const data = await fetch("http://localhost:8000/api/directory/paths").then((res) =>
+      const data = await fetch(`${API_URL}/api/directory/paths`).then((res) =>
         res.json(),
       );
       setDirs(data.dirs || []);
@@ -205,11 +202,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   }, [open]);
 
   const handleAddDirectory = async () => {
-    if (!electron) return;
+    if (!window.electron) return;
 
     try {
       // This calls the 'open-directory-picker' handler we added to main.js
-      const path = await electron.ipcRenderer.invoke("open-directory-picker");
+      const path = await window.electron.ipcRenderer.invoke("open-directory-picker");
 
       if (path) {
         // Send the absolute path to your FastAPI backend
@@ -269,7 +266,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     persistFrontendSettings(settings);
     notifySfmSettingsChanged();
 
-    await fetch("http://localhost:8000/api/config/", {
+    await fetch(`${API_URL}/api/config/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

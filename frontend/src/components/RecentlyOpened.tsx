@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getCachedThumbnail, setCachedThumbnail } from "../libs/thumbnailCache";
 import { getPdfPreview } from "../libs/pdfPreview";
 import { IconFileText, IconFileImage } from "./icons";
+import toast from "react-hot-toast";
 
 type RecentEntry = {
   name: string;
@@ -69,20 +70,13 @@ function FileThumb({ file }: { file: RecentEntry }) {
         return;
       }
 
-      const electron = (window as any).require ? (window as any).require("electron") : null;
-      
-      try {
-        if (electron?.nativeImage) {
-          // 2. Try OS native thumbnail
-          const thumb = await electron.nativeImage.createThumbnailFromPath(file.path, { 
-            width: 256, 
-            height: 256 
-          });
-          
-          if (!thumb.isEmpty() && isMounted) {
-            const dataUrl = thumb.toDataURL();
+    try {
+        if (window.electron?.ipcRenderer) {
+          // Strictly use file.path here!
+          const dataUrl = await window.electron.ipcRenderer.invoke('get-file-thumbnail', file.path);
+          if (dataUrl && isMounted) {
             setPreview(dataUrl);
-            await setCachedThumbnail(file.path, dataUrl); // Save to cache
+            await setCachedThumbnail(file.path, dataUrl);
             return;
           }
         }
@@ -90,7 +84,6 @@ function FileThumb({ file }: { file: RecentEntry }) {
         // Fallback
       }
 
-      // 3. Fallback for PDFs
       if (file.type === "pdf" && isMounted) {
         const pdfThumb = await getPdfPreview(file.path);
         if (pdfThumb && isMounted) {
@@ -147,9 +140,6 @@ export function RecentlyOpened({
   maxItems?: number;
 }) {
   const [files, setFiles] = useState<RecentEntry[]>(() => readRecents());
-  const electron = (window as any).require
-    ? (window as any).require("electron")
-    : null;
 
   useEffect(() => {
     const onRecentsUpdated = (event: Event) => {
@@ -208,18 +198,19 @@ export function RecentlyOpened({
             <li key={f.path}>
             <button
               type="button"
-              onDoubleClick={async () => {
-                if (!electron?.ipcRenderer) return;
+                onDoubleClick={async () => {
+                if (!window.electron?.ipcRenderer) return;
                 try {
-                  const result = await electron.ipcRenderer.invoke("open-file-in-os", f.path);
+                  const result = await window.electron.ipcRenderer.invoke("open-file-in-os", f.path);
                   if (!result?.ok) {
                     removeRecentlyOpened(f.path);
+                    toast.error("File not found. It has been removed from history.");
                     return;
                   }
                   addRecentlyOpened(f.path);
                 } catch (error) {
                   removeRecentlyOpened(f.path);
-                  console.error("Failed to open file:", error);
+                  toast.error("Failed to communicate with the operating system.");
                 }
               }}
               className="group flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface-elevated text-left shadow-soft transition-all duration-300 ease-material hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98]"

@@ -13,6 +13,7 @@ import {
   IconChevronRight,
 } from "./components/icons";
 import logo from "./assets/logo.svg";
+import { Toaster } from "react-hot-toast";
 
 type View = "main" | "search" | "recents" | "cleanup" | "embedding";
 
@@ -349,6 +350,17 @@ export default function App() {
   return (
     <ThemeProvider>
       <Dashboard />
+      <Toaster 
+        position="bottom-right" 
+        toastOptions={{
+          className: 'bg-surface-elevated text-foreground border border-border shadow-soft rounded-xl text-sm font-medium',
+          style: {
+            background: 'var(--color-surface-elevated)',
+            color: 'var(--color-foreground)',
+            borderColor: 'var(--color-border)'
+          }
+        }} 
+      />
     </ThemeProvider>
   );
 }

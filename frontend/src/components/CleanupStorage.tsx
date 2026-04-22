@@ -7,7 +7,7 @@ import {
   useCallback,
 } from "react";
 import type { TransitionEvent } from "react";
-import { File, Check, X, ExternalLink, Trash2, Loader2 } from "lucide-react";
+import { Check, X, Trash2, Loader2 } from "lucide-react";
 import { addRecentlyOpened } from "./RecentlyOpened";
 import {
   readDuplicateSimilarityThreshold,
@@ -16,6 +16,9 @@ import {
 import { IconFileText, IconFileImage } from "./icons";
 import { getCachedThumbnail, setCachedThumbnail } from "../libs/thumbnailCache";
 import { getPdfPreview } from "../libs/pdfPreview";
+import LayoutWorker from "../workers/layoutWorker?worker";
+import { API_URL } from "../config";
+import toast from "react-hot-toast";
 
 
 // --- FORMATTING UTILS ---
@@ -91,155 +94,6 @@ function similarityEdgeStroke(similarity: number, threshold: number): string {
   return `rgb(${r} ${g} ${b})`;
 }
 
-// --- DYNAMIC GRAPH LAYOUT ALGORITHM ---
-function calcLayout(nodes: FileNode[], edges: SimilarityEdge[]): LayoutNode[] {
-  if (!nodes || nodes.length === 0) return [];
-
-  const iters = 400; // Increased iterations for annealing
-  const idealDist = 25;
-  const kSpring = 0.15;
-  const kRepel = 400;
-  const kCenter = 0.03;
-  const damp = 0.85;
-  
-  // Hard constraint: nodes must be at least this far apart (percentage of canvas)
-  // 12% is roughly enough space to prevent 80px nodes from overlapping
-  const minNodeDist = 12; 
-
-  // Pre-calculate degrees to normalize spring forces in dense clusters
-  const degree: Record<number, number> = {};
-  nodes.forEach((n) => { degree[n.id] = 0; });
-  edges.forEach((e) => {
-    if (degree[e.source] !== undefined) degree[e.source]++;
-    if (degree[e.target] !== undefined) degree[e.target]++;
-  });
-
-  const pos: LayoutNode[] = nodes.map((n, i) => {
-    const angle = (i * 2 * Math.PI) / nodes.length;
-    return {
-      ...n,
-      // Start in a wider circle so they have room to push each other around
-      x: 50 + Math.cos(angle) * 40,
-      y: 50 + Math.sin(angle) * 40,
-      vx: 0,
-      vy: 0,
-    };
-  });
-
-  for (let i = 0; i < iters; i++) {
-    // Simulated annealing: force multiplier cools down from 1.0 to 0.0
-    const alpha = 1 - i / iters;
-
-    // 1. Repulsion between all nodes
-    for (let a = 0; a < pos.length; a++) {
-      for (let b = a + 1; b < pos.length; b++) {
-        let dx = pos[a].x - pos[b].x;
-        let dy = pos[a].y - pos[b].y;
-        let dSq = dx * dx + dy * dy;
-
-        // Prevent math explosion if perfectly overlapping
-        if (dSq === 0) {
-          dx = (Math.random() - 0.5);
-          dy = (Math.random() - 0.5);
-          dSq = dx * dx + dy * dy;
-        }
-
-        const d = Math.sqrt(dSq);
-        const f = (kRepel / dSq) * alpha;
-        
-        const fx = (dx / d) * f;
-        const fy = (dy / d) * f;
-
-        pos[a].vx! += fx;
-        pos[a].vy! += fy;
-        pos[b].vx! -= fx;
-        pos[b].vy! -= fy;
-      }
-    }
-
-    // 2. Attraction along edges (Springs)
-    for (const edge of edges) {
-      const aIdx = pos.findIndex((n) => n.id === edge.source);
-      const bIdx = pos.findIndex((n) => n.id === edge.target);
-      if (aIdx === -1 || bIdx === -1) continue;
-
-      const a = pos[aIdx];
-      const b = pos[bIdx];
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      let d = Math.sqrt(dx * dx + dy * dy);
-      if (d === 0) d = 0.01;
-
-      // Normalize by degree to prevent dense clusters from imploding into a singularity
-      const linkStrength = 1 / Math.max(1, Math.min(degree[a.id] || 1, degree[b.id] || 1));
-      
-      const f = kSpring * linkStrength * edge.similarity * (d - idealDist) * alpha;
-      const fx = (dx / d) * f;
-      const fy = (dy / d) * f;
-
-      a.vx! += fx;
-      a.vy! += fy;
-      b.vx! -= fx;
-      b.vy! -= fy;
-    }
-
-    // 3. Center gravity, velocity update
-    for (const p of pos) {
-      p.vx! += (50 - p.x) * kCenter * alpha;
-      p.vy! += (50 - p.y) * kCenter * alpha;
-
-      // Clamp max velocity to prevent wild shooting
-      p.vx = Math.max(-10, Math.min(10, p.vx!));
-      p.vy = Math.max(-10, Math.min(10, p.vy!));
-
-      p.x += p.vx;
-      p.y += p.vy;
-
-      p.vx *= damp;
-      p.vy *= damp;
-    }
-
-    // 4. Hard Collision Resolution (Anti-Overlap)
-    // Run multiple mini-passes to resolve cascading overlaps
-    for (let k = 0; k < 3; k++) {
-      for (let a = 0; a < pos.length; a++) {
-        for (let b = a + 1; b < pos.length; b++) {
-          let dx = pos[a].x - pos[b].x;
-          let dy = pos[a].y - pos[b].y;
-          let d = Math.sqrt(dx * dx + dy * dy);
-          
-          if (d < minNodeDist) {
-            if (d === 0) { dx = 0.1; dy = 0.1; d = 0.14; }
-            // Move each node back by half the overlapping amount
-            const overlap = (minNodeDist - d) / 2;
-            const fixX = (dx / d) * overlap;
-            const fixY = (dy / d) * overlap;
-            
-            pos[a].x += fixX;
-            pos[a].y += fixY;
-            pos[b].x -= fixX;
-            pos[b].y -= fixY;
-            
-            // Kill velocity in the direction of the collision to prevent bouncing
-            pos[a].vx! *= 0.5;
-            pos[a].vy! *= 0.5;
-            pos[b].vx! *= 0.5;
-            pos[b].vy! *= 0.5;
-          }
-        }
-      }
-    }
-
-    // 5. Bounds Clamping
-    for (const p of pos) {
-      p.x = Math.max(2, Math.min(98, p.x));
-      p.y = Math.max(2, Math.min(98, p.y));
-    }
-  }
-
-  return pos;
-}
-
 function CleanupThumb({ 
   path, 
   containerClass = "h-10 w-10 rounded-lg border border-border bg-surface-muted", 
@@ -263,18 +117,18 @@ function CleanupThumb({
         return;
       }
 
-      const electron = (window as any).require ? (window as any).require("electron") : null;
-      try {
-        if (electron?.nativeImage) {
-          const thumb = await electron.nativeImage.createThumbnailFromPath(path, { width: 256, height: 256 });
-          if (!thumb.isEmpty() && isMounted) {
-            const dataUrl = thumb.toDataURL();
+    try {
+        if (window.electron?.ipcRenderer) {
+          const dataUrl = await window.electron.ipcRenderer.invoke('get-file-thumbnail', path);
+          if (dataUrl && isMounted) {
             setPreview(dataUrl);
             await setCachedThumbnail(path, dataUrl);
             return;
           }
         }
-      } catch (error) {}
+      } catch (error) {
+        // Fallback
+      }
 
       if (path.toLowerCase().endsWith(".pdf") && isMounted) {
         const pdfThumb = await getPdfPreview(path);
@@ -304,16 +158,43 @@ function CleanupThumb({
 }
 
 export default function DuplicateGraph() {
-    const electron = (window as any).require
-    ? (window as any).require("electron")
-    : null;
-  // --- GRAPH DATA STATE ---
+// --- GRAPH DATA STATE ---
   const [graphNodes, setGraphNodes] = useState<FileNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<SimilarityEdge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Layout calculated dynamically when data changes
-  const layoutNodes = useMemo(() => calcLayout(graphNodes, graphEdges), [graphNodes, graphEdges]);
+  // New async layout state
+  const [layoutNodes, setLayoutNodes] = useState<LayoutNode[]>([]);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  useEffect(() => {
+    // If there's no data, clear the layout immediately
+    if (graphNodes.length === 0) {
+      setLayoutNodes([]);
+      return;
+    }
+
+    setIsCalculating(true);
+    
+    // Spawn a new background worker
+    const worker = new LayoutWorker();
+
+    // Listen for the completed layout
+    worker.onmessage = (e) => {
+      setLayoutNodes(e.data);
+      setIsCalculating(false);
+      worker.terminate();
+    };
+
+    // Send the raw data to the worker to process
+    worker.postMessage({ nodes: graphNodes, edges: graphEdges });
+
+    // Cleanup function to terminate the worker if the component unmounts 
+    // or if the data changes before the current calculation finishes
+    return () => {
+      worker.terminate();
+    };
+  }, [graphNodes, graphEdges]);
 
   const [activeNodeId, setActiveNodeId] = useState<number | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<number | null>(null);
@@ -349,7 +230,7 @@ export default function DuplicateGraph() {
     hadOpenPanelRef.current = false;
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/duplicates/get_dupes?page=${page}`);
+      const response = await fetch(`${API_URL}/api/duplicates/get_dupes?page=${page}`);
       if (!response.ok) {
         throw new Error("Failed to fetch duplicates data");
       }
@@ -609,16 +490,18 @@ export default function DuplicateGraph() {
       <div className="pointer-events-none absolute -left-1/4 -top-1/4 h-1/2 w-1/2 rounded-full bg-primary/8 blur-3xl dark:bg-primary/15" />
       <div className="pointer-events-none absolute -bottom-1/4 -right-1/4 h-3/5 w-3/5 rounded-full bg-surface-elevated/80 blur-3xl dark:bg-surface-elevated/20" />
 
-      {/* LOADING STATE */}
-      {isLoading && (
+    {/* LOADING STATE */}
+      {(isLoading || isCalculating) && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-surface-muted/20 backdrop-blur-[2px]">
           <Loader2 className="animate-spin text-primary mb-3" size={42} />
-          <p className="text-sm font-medium text-foreground">Analyzing file duplicates...</p>
+          <p className="text-sm font-medium text-foreground">
+            {isLoading ? "Fetching file duplicates..." : "Calculating visual layout..."}
+          </p>
         </div>
       )}
 
       {/* EMPTY STATE */}
-      {!isLoading && graphNodes.length === 0 && (
+      {(!isLoading && !isCalculating) && graphNodes.length === 0 && (
         <div className="absolute inset-0 z-40 flex items-center justify-center">
           <p className="text-base font-medium text-foreground-muted">
             No duplicates found for this page.
@@ -626,7 +509,7 @@ export default function DuplicateGraph() {
         </div>
       )}
 
-      {!isLoading && graphNodes.length > 0 && (
+      {(!isLoading && !isCalculating) && graphNodes.length > 0 && (
         <>
           {/* Main Canvas Legend */}
           <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2 rounded-xl border border-border bg-surface-elevated/90 p-3 text-xs shadow-soft backdrop-blur-md dark:bg-surface-elevated/90">
@@ -782,15 +665,19 @@ export default function DuplicateGraph() {
                   <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={async () => {
-                      if (!electron?.ipcRenderer || !displayNode.path) return;
+                      onClick={async () => {
+                      if (!window.electron?.ipcRenderer || !displayNode.path) return;
                       try {
-                        await electron.ipcRenderer.invoke("open-file-in-os", displayNode.path);
+                        const result = await window.electron.ipcRenderer.invoke("open-file-in-os", displayNode.path);
+                        if (!result?.ok) {
+                          toast.error("Could not open file. It may have been moved or deleted.");
+                          return;
+                        }
                         addRecentlyOpened(displayNode.path);
                       } catch (error) {
-                        console.error("Failed to open file:", error);
+                        toast.error("Failed to communicate with the operating system.");
                       }
-                    }}
+                    }}  
                     className="flex h-9 items-center justify-center rounded-full bg-surface-muted px-4 text-sm font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-elevated hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label="Open selected file"
                   >
@@ -877,13 +764,17 @@ export default function DuplicateGraph() {
 
                           <button
                             type="button"
-                            onClick={async () => {
-                              if (!electron?.ipcRenderer || !node.path) return;
+                              onClick={async () => {
+                              if (!window.electron?.ipcRenderer || !node.path) return;
                               try {
-                                await electron.ipcRenderer.invoke("open-file-in-os", node.path);
+                                const result = await window.electron.ipcRenderer.invoke("open-file-in-os", node.path);
+                                if (!result?.ok) {
+                                  toast.error("Could not open file. It may have been moved or deleted.");
+                                  return;
+                                }
                                 addRecentlyOpened(node.path);
                               } catch (error) {
-                                console.error("Failed to open file:", error);
+                                toast.error("Failed to communicate with the operating system.");
                               }
                             }}
                             className="flex h-7 items-center justify-center rounded-full bg-surface-elevated px-3 text-xs font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-muted hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

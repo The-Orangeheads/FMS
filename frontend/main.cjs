@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -10,8 +10,9 @@ function createWindow() {
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'src', 'assets', 'logo.ico'),
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
@@ -63,6 +64,30 @@ ipcMain.handle('open-file-in-os', async (_event, filePath) => {
     return { ok: false, error };
   }
   return { ok: true };
+});
+
+ipcMain.handle('get-file-thumbnail', async (_event, filePath) => {
+  try {
+    let thumb;
+    
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      thumb = await nativeImage.createThumbnailFromPath(filePath, { width: 256, height: 256 });
+    } else {
+      thumb = nativeImage.createFromPath(filePath);
+      if (!thumb.isEmpty()) {
+        thumb = thumb.resize({ width: 256, height: 256 });
+      }
+    }
+
+    if (thumb && !thumb.isEmpty()) {
+        return thumb.toDataURL();
+        }
+    } catch (error) {
+        // Silently ignore OS-level thumbnail failures. 
+        // Files like .txt or unsupported .pdfs will naturally throw here.
+        // Returning null allows the React frontend to run its fallback icons/PDF renderer.
+    }
+    return null;
 });
 
 app.whenReady().then(createWindow);
