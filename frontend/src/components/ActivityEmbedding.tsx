@@ -303,11 +303,7 @@ async function triggerSharedSync() {
     }
   } catch (err) {
     console.error("Sync failed:", err);
-    toast.error("Failed to connect to the local sync server.");
-    sharedState = {
-      ...sharedState,
-      error: "Failed to start sync. Please try again.",
-    };
+    toast.error("Failed to start sync. Please try again.");
   } finally {
     syncInFlight = false;
     sharedState = { ...sharedState, resyncing: false };

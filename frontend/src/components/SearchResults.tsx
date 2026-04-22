@@ -241,18 +241,27 @@ export function SearchResults({
           Refining results...
         </div>
       ) : null}
-      <ul
-        key={animationKey}
-        className={[
-          "flex flex-col gap-3 transition-opacity duration-300",
-          isReranking ? "opacity-50" : "opacity-100",
-          !isReranking ? "animate-results-refresh" : "",
-        ].join(" ")}
-      >
-        {transformedResults.map((r) => (
-          <li key={`${r.path}-${r.name}`}>
-            <button
-              type="button"
+
+      {transformedResults.length === 0 ? (
+        <div className="mt-8 flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface-muted/30 py-16 text-center">
+          <h3 className="mb-2 text-lg font-bold text-foreground">No matches found</h3>
+          <p className="max-w-sm text-sm text-foreground-muted">
+            Couldn't find any files matching <span className="font-medium text-foreground">&ldquo;{queryLabel}&rdquo;</span>. Try adjusting your search term.
+          </p>
+        </div>
+      ) : (
+        <ul
+          key={animationKey}
+          className={[
+            "flex flex-col gap-3 transition-opacity duration-300",
+            isReranking ? "opacity-50" : "opacity-100",
+            !isReranking ? "animate-results-refresh" : "",
+          ].join(" ")}
+        >
+          {transformedResults.map((r) => (
+            <li key={`${r.path}-${r.name}`}>
+              <button
+                type="button"
                 onDoubleClick={async () => {
                 if (!window.electron?.ipcRenderer) return;
                 try {
@@ -266,44 +275,45 @@ export function SearchResults({
                   toast.error("Failed to communicate with the operating system.");
                 }
               }}
-              className={[
-                "flex w-full items-center gap-4 rounded-xl border border-border bg-surface-elevated px-4 py-3 text-left shadow-soft transition-all duration-300 ease-material focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98]",
-                isReranking ? "animate-pulse" : "hover:shadow-card",
-              ].join(" ")}
-            >
-            <ResultThumb path={r.path} type={r.type} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-foreground">
-                  {r.name}
+                className={[
+                  "flex w-full items-center gap-4 rounded-xl border border-border bg-surface-elevated px-4 py-3 text-left shadow-soft transition-all duration-300 ease-material focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98]",
+                  isReranking ? "animate-pulse" : "hover:shadow-card",
+                ].join(" ")}
+              >
+              <ResultThumb path={r.path} type={r.type} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-foreground">
+                    {r.name}
+                  </span>
+                  <span className="text-xs text-foreground-muted">
+                    {r.type === "text" && r.bestPage != null ? (
+                      <>Page {r.bestPage}</>
+                    ) : null} 
+                    {r.type === "text" && r.bestPage != null && (r.fileSize || r.modifiedDate) ? (
+                      <> · </>
+                    ) : null}
+                    {r.fileSize ? (
+                      <>{r.fileSize}</>
+                    ) : null}
+                    {r.fileSize && r.modifiedDate ? (
+                      <> · </>
+                    ) : null}
+                    {r.modifiedDate ? (
+                      <>{r.modifiedDate}</>
+                    ) : null}
+                    {!r.fileSize && !r.modifiedDate ? (
+                      <>Semantic match</>
+                    ) : null}
+                  </span>
                 </span>
-                <span className="text-xs text-foreground-muted">
-                  {r.type === "text" && r.bestPage != null ? (
-                    <>Page {r.bestPage}</>
-                  ) : null} 
-                  {r.type === "text" && r.bestPage != null && (r.fileSize || r.modifiedDate) ? (
-                    <> · </>
-                  ) : null}
-                  {r.fileSize ? (
-                    <>{r.fileSize}</>
-                  ) : null}
-                  {r.fileSize && r.modifiedDate ? (
-                    <> · </>
-                  ) : null}
-                  {r.modifiedDate ? (
-                    <>{r.modifiedDate}</>
-                  ) : null}
-                  {!r.fileSize && !r.modifiedDate ? (
-                    <>Semantic match</>
-                  ) : null}
+                <span className="inline-flex shrink-0 items-center rounded-full bg-primary/12 px-3 py-1.5 text-sm font-semibold tabular-nums text-primary">
+                  {r.match}% match
                 </span>
-              </span>
-              <span className="inline-flex shrink-0 items-center rounded-full bg-primary/12 px-3 py-1.5 text-sm font-semibold tabular-nums text-primary">
-                {r.match}% match
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
