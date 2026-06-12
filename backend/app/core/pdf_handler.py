@@ -2,13 +2,13 @@ import fitz
 import pdfplumber
 import pandas as pd
 from typing import List, Tuple, Optional, Dict
+from app.services.ocr_service import ocr
 from app.core.config import settings
-import os
 
-class PDFTextHandler:
+class PDFHandler:
     def __init__(self):
         self._pending_table_df: Optional[pd.DataFrame] = None 
-
+    
     def blocks_complexity_score(self, page, debug_text: bool = False):
         score = 0
 
@@ -150,15 +150,25 @@ class PDFTextHandler:
         df = df.replace(r'\n', ' ', regex=True)
         return df.to_markdown(index=False)
 
-    def _extract_images(self, page: fitz.Page) -> List[str]:
+    def _extract_image_text(self, page: fitz.Page) -> List[str]:
         image_list = page.get_images(full=True)
         valid_images = []
+
         for img in image_list:
             xref = img[0]
             base_image = page.parent.extract_image(xref)
+
             if base_image["width"] < 50 or base_image["height"] < 50:
                 continue
-            valid_images.append(f"[Image: {base_image['width']}x{base_image['height']}]")
+
+            image_bytes = base_image["image"]
+            ocr_text = ocr.extract_text(image_bytes)
+
+            if len(ocr_text) < settings.ocr_min_text_length:
+                continue
+
+            valid_images.append(f"[Image with text: {ocr_text}]")
+        
         return valid_images
 
     def _extract_complex(self, pdf_path: str, page_index: int) -> Tuple[str, List[pd.DataFrame]]:
@@ -174,6 +184,23 @@ class PDFTextHandler:
             page_text.append(p.extract_text() or "")
         return "\n".join(page_text), tables_found
 
+    def extract_images_data(self, file_path: str):
+        doc = fitz.open(file_path)
+        extracted_images = []
+
+        for i, page in enumerate(doc):
+            image_list = page.get_images(full=True)
+
+            for img in image_list:
+                xref = img[0]
+                base_image = page.parent.extract_image(xref)
+
+                if base_image["width"] < 50 or base_image["height"] < 50:
+                    continue
+                extracted_images.append((base_image["image"], i+1))
+
+        return extracted_images
+
     def process_document(self, file_path: str) -> List[Dict]:
         doc = fitz.open(file_path)
         extracted_pages = []
@@ -182,7 +209,7 @@ class PDFTextHandler:
             score = self.calculate_page_complexity(page)
             
             page_content = ""
-            valid_images = self._extract_images(page)
+            valid_images = self._extract_image_text(page)
             if valid_images:
                 page_content += "\n".join(valid_images) + "\n"
 

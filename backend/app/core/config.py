@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     search_threshold: float = 0.1
     similarity_threshold: float = 0.9
     
+    # === OCR ===
+    ocr_min_text_length: int = 10
     class Config:
         """Pydantic config."""
         env_file = os.path.join(os.getcwd(), ".env")

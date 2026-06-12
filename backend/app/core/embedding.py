@@ -25,7 +25,7 @@ things and output the same things
 """
 class EmbeddingModelInterface:
     """Base class to enforce a common structure for all model recipes."""
-    def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
+    def embed(self, chunks: List[ChunkInput], notify_cb=None, display_name: str = "",  startPercent: int=0, endPercent: int=0) -> List[List[float]]:
         raise NotImplementedError
     
     def free_vram(self):
@@ -82,11 +82,11 @@ class SBERTModel(EmbeddingModelInterface):
     and is expected to return a list of vectors, but as we know SBERT like models deal with text
     so that's why we extract the chunks' text into a variable called texts.
     """
-    def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
+    def embed(self, chunks: List[ChunkInput], notify_cb=None, display_name: str = "", startPercent: int=0, endPercent: int=0) -> List[List[float]]:
         file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
 
         if notify_cb:
-            notify_cb(f"Loading Embedding Model... : {file_name} : 10")
+            notify_cb(f"Loading Embedding Model... : {display_name} : {int(round(startPercent + (endPercent-startPercent)*0.10))}")
         
         with self.vram_lock:
             self.currently_embedding += 1
@@ -119,7 +119,7 @@ class SBERTModel(EmbeddingModelInterface):
         sorted_embds = []
 
         if notify_cb:
-            notify_cb(f"Embedded 0 batches out of {total_batches}: {file_name} : 15")
+            notify_cb(f"Embedded 0 batches out of {total_batches}: {display_name} : {int(round(startPercent + (endPercent-startPercent)*0.15))}")
 
         for batch_index, i in enumerate(range(0, len(sorted_texts), batch_size), start=1):
             cur_batch = sorted_texts[i : i + batch_size]
@@ -133,8 +133,8 @@ class SBERTModel(EmbeddingModelInterface):
             sorted_embds.extend(batch_embeddings.cpu().tolist())
             
             if notify_cb:
-                percentage = 15 + round(batch_index/total_batches * 80)
-                notify_cb(f"Embedded {batch_index} batches out of {total_batches}: {file_name} : {percentage}")
+                percentage = (15 + round(batch_index/total_batches * 80))/100
+                notify_cb(f"Embedded {batch_index} batches out of {total_batches}: {display_name} : {int(round(startPercent + (endPercent-startPercent)*percentage))}")
             
         # Restore the original batches order
         ordered_embds = [None] * len(texts)
@@ -221,11 +221,11 @@ class SiglipModel(EmbeddingModelInterface):
         raise TypeError(f"Unsupported SigLIP2 output type: {type(outputs)!r}")
 
     @torch.no_grad()
-    def embed(self, chunks: List[ChunkInput], notify_cb=None) -> List[List[float]]:
+    def embed(self, chunks: List[ChunkInput], notify_cb=None, display_name: str = "",  startPercent: int=0, endPercent: int=0) -> List[List[float]]:
         file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
         
         if notify_cb:
-            notify_cb(f"Loading Embedding Model... : {file_name} : 25")
+            notify_cb(f"Loading Embedding Model... : {display_name} : {int(round(startPercent + (endPercent-startPercent)*0.25))}")
         
         with self.vram_lock:
             self.currently_embedding += 1
@@ -234,7 +234,7 @@ class SiglipModel(EmbeddingModelInterface):
         embeddings: List[List[float]] = []
 
         if notify_cb:
-            notify_cb(f"Embedding image... : {file_name} : 35")
+            notify_cb(f"Embedding image... : {display_name} : {int(round(startPercent + (endPercent-startPercent)*0.35))}")
         
         for chunk in chunks:
             if chunk.image_base64:

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 
-from app.services.text_handler import PDFTextHandler
+from app.core.pdf_handler import PDFHandler
 
 # -------------------------
 # Fixtures
@@ -10,7 +10,7 @@ from app.services.text_handler import PDFTextHandler
 
 @pytest.fixture
 def handler():
-    return PDFTextHandler(complexity_threshold=5)
+    return PDFHandler()
 
 
 @pytest.fixture

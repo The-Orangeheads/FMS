@@ -137,17 +137,24 @@ class fileSync:
         
         return [file_map, file_data, other_count, other_size]
 
-    def get_outdated(self, cur_state, stored_state) -> list:
-        ids_to_rem = []
+    def get_outdated(self, cur_state, stored_state) -> tuple[list, list]:
+        txt_ids_to_rem = []
+        img_ids_to_rem = []
 
         for path, vals in stored_state.items():
             file_id = vals["file_id"]
-            embd_signature = vals["embd_signature"]
+            file_type = file_handler.detect_file_type(path)
 
-            if path not in cur_state or cur_state[path] != embd_signature:
-                ids_to_rem.append(file_id)
+            text_embd_signature = vals["text_embd_signature"]
+            image_embd_signature = vals["image_embd_signature"]
+
+            if path not in cur_state or cur_state[path] != text_embd_signature:
+                txt_ids_to_rem.append(file_id)
+
+            if (file_type != "text_document" and file_type != "audio") and (path not in cur_state or cur_state[path] != image_embd_signature):
+                img_ids_to_rem.append(file_id)
         
-        return ids_to_rem
+        return (txt_ids_to_rem, img_ids_to_rem)
     
     def sync_notify(self,message_text):
         asyncio.run_coroutine_threadsafe(
@@ -210,31 +217,65 @@ class fileSync:
 
             print("deleting outdated embeddings")
 
-            files_db_service.delete_ids(self.get_outdated(cur_state, stored_state))
+            [txt_ids_to_rem, img_ids_to_rem] = self.get_outdated(cur_state, stored_state)
+
+            files_db_service.delete_ids(txt_ids_to_rem, "document")
+            files_db_service.delete_ids(img_ids_to_rem, "image")
+
+            files_db_service.clean_file_table()
 
             await self.check_cancel()
             
             print("initializing queue")
-            paths_to_add = []
+            txt_paths_to_add = []
+            image_paths_to_add = []
+
             for path, key in cur_state.items():
                 await self.check_cancel()
 
                 [file_type, fsize] = file_data[path]
-                category = analytics[file_type]
+                analytics_key = "document" if file_type in ("text_document", "hybrid_document") else file_type
+                category = analytics.get(analytics_key, analytics["other"])
+                
                 category[0] += 1
                 category[1] += 1
                 category[2] += fsize
                 category[3] += fsize
-                if path not in stored_state or key != stored_state[path]["embd_signature"]:
+                
+                stored_file = stored_state.get(path, {})
+                needs_text = not stored_file or key != stored_file.get("text_embd_signature")
+                needs_image = file_type not in ("text_document", "audio") and (not stored_file or key != stored_file.get("image_embd_signature"))
+                
+                if needs_text or needs_image:
                     category[0] -= 1
                     category[2] -= fsize
-                    paths_to_add.append(path)
 
+                    if needs_text:
+                        txt_paths_to_add.append(path)
+                    
+                    if needs_image:
+                        image_paths_to_add.append(path)
             
             # send queue to frontend and unlock sync button
             # websocket magic here
-            total_files = len(paths_to_add)
-            queue_data = [{"id": p, "name": os.path.basename(p)} for p in paths_to_add]
+
+            total_files = len(txt_paths_to_add) + len(image_paths_to_add)
+            queue_data = []
+
+            for path in txt_paths_to_add:
+                [file_type, fsize] = file_data[path]
+                if file_type == "image":
+                    queue_data.append({"id": "extract://" + path, "name": "Text Extraction: " + os.path.basename(path)})
+                else:
+                    queue_data.append({"id": path, "name": os.path.basename(path)})
+
+            for path in image_paths_to_add:
+                [file_type, fsize] = file_data[path]
+                if file_type == "hybrid_document":
+                    queue_data.append({"id": "extract://" + path, "name": "Image Extraction: " + os.path.basename(path)})
+                else:
+                    queue_data.append({"id": path, "name": os.path.basename(path)})
+            
             await ws_manager.broadcast(
                 json.dumps({
                     "type": "START_SYNC",
@@ -245,11 +286,11 @@ class fileSync:
                     })
                 )
             
-            for index, path in enumerate(paths_to_add):
+            for index, path in enumerate(txt_paths_to_add):
                 await self.check_cancel()
 
-
                 [file_type, fsize] = file_data[path]
+                current_name = "Text Extraction: " + os.path.basename(path) if file_type == "image" else os.path.basename(path)
 
                 try:
                     loop = asyncio.get_event_loop()
@@ -258,18 +299,21 @@ class fileSync:
                     #! TIME BOMB PREVENTION SQUAD: uncommnet, uncommen, comment (next 3 lines) if you don't have models
                     # print(f"Processing: {path}")
                     # await asyncio.sleep(2)
-                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(p, clear_last=True, notify_cb=self.sync_notify))
+                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(path=p, embd_type="document", clear_last=True, notify_cb=self.sync_notify, display_name=current_name))
 
                     duration = round(loop.time() - start_time, 3)
 
                     # Update analytics for completed file
-                    if file_type in analytics:
-                        analytics[file_type][0] += 1  # increment entries_done
-                        analytics[file_type][2] += fsize  # increment size_done
 
+                    analytics_key = "document" if file_type in ("text_document", "hybrid_document") else file_type
+                    if analytics_key in analytics:
+                        if file_type in ("text_document", "audio"):
+                            analytics[analytics_key][0] += 1  # increment entries_done
+                            analytics[analytics_key][2] += fsize  # increment size_done
+                    
                     await ws_manager.broadcast(json.dumps({
                         "type": "SYNC_PROGRESS",
-                        "current_file": os.path.basename(path),
+                        "current_file": current_name,
                         "progress": int((index + 1) / total_files * 100),
                         "remaining": total_files - index - 1,
                         "duration_seconds": duration,
@@ -278,7 +322,46 @@ class fileSync:
                 except Exception as e:
                     await ws_manager.broadcast(json.dumps({
                         "type": "SYNC_ERROR",
-                        "file": os.path.basename(path),
+                        "file": current_name,
+                        "error": str(e)
+                    }))
+
+            for index, path in enumerate(image_paths_to_add):
+                await self.check_cancel()
+
+                [file_type, fsize] = file_data[path]
+                current_name = "Image Extraction: " + os.path.basename(path) if file_type == "hybrid_document" else os.path.basename(path)
+
+                try:
+                    loop = asyncio.get_event_loop()
+                    start_time = loop.time()
+
+                    #! TIME BOMB PREVENTION SQUAD: uncommnet, uncommen, comment (next 3 lines) if you don't have models
+                    # print(f"Processing: {path}")
+                    # await asyncio.sleep(2)
+                    await loop.run_in_executor(None, lambda p=path: file_handler.process_file(path=p, embd_type="image", clear_last=True, notify_cb=self.sync_notify, display_name=current_name))
+
+                    duration = round(loop.time() - start_time, 3)
+
+                    # Update analytics for completed file
+
+                    analytics_key = "document" if file_type in ("text_document", "hybrid_document") else file_type
+                    if analytics_key in analytics:
+                        analytics[analytics_key][0] += 1  # increment entries_done
+                        analytics[analytics_key][2] += fsize  # increment size_done
+                    
+                    await ws_manager.broadcast(json.dumps({
+                        "type": "SYNC_PROGRESS",
+                        "current_file": current_name,
+                        "progress": int((len(txt_paths_to_add) + index + 1) / total_files * 100),
+                        "remaining": total_files - index - 1,
+                        "duration_seconds": duration,
+                        "analytics": analytics
+                    }))
+                except Exception as e:
+                    await ws_manager.broadcast(json.dumps({
+                        "type": "SYNC_ERROR",
+                        "file": current_name,
                         "error": str(e)
                     }))
         
