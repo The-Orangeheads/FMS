@@ -89,10 +89,6 @@ class FileHandler:
                 ))
                 valid_chunks.append(chunk)
         
-        if not valid_inputs:
-            logger.warning(f"File {path} resulted in 0 valid chunks after filtering.")
-            return {"status": "skipped", "message": "No meaningful text found in file."}
-
         # 3. Embed using ONLY the valid data
         embedded_data = embedding_service.process_embeddings(target_model, valid_inputs, notify_cb, display_name, startPercent, endPercent)
 

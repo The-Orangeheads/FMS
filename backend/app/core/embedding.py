@@ -83,8 +83,6 @@ class SBERTModel(EmbeddingModelInterface):
     so that's why we extract the chunks' text into a variable called texts.
     """
     def embed(self, chunks: List[ChunkInput], notify_cb=None, display_name: str = "", startPercent: int=0, endPercent: int=0) -> List[List[float]]:
-        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
-
         if notify_cb:
             notify_cb(f"Loading Embedding Model... : {display_name} : {int(round(startPercent + (endPercent-startPercent)*0.10))}")
         
@@ -93,8 +91,10 @@ class SBERTModel(EmbeddingModelInterface):
         self.load_on_vram()
 
         texts = [c.text if hasattr(c, 'text') else str(c) for c in chunks]
+
         if not texts:
             return []
+        
         """
         The model.encode function is the one where text is actually converted into vectors
         the convert_to_tensor parameter is responsible for making the data in a form that's possible
@@ -222,8 +222,7 @@ class SiglipModel(EmbeddingModelInterface):
 
     @torch.no_grad()
     def embed(self, chunks: List[ChunkInput], notify_cb=None, display_name: str = "",  startPercent: int=0, endPercent: int=0) -> List[List[float]]:
-        file_name = os.path.basename(chunks[0].metadata.get("path", "unknown"))
-        
+
         if notify_cb:
             notify_cb(f"Loading Embedding Model... : {display_name} : {int(round(startPercent + (endPercent-startPercent)*0.25))}")
         

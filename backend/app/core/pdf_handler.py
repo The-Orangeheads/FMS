@@ -163,10 +163,7 @@ class PDFHandler:
 
             image_bytes = base_image["image"]
             ocr_text = ocr.extract_text(image_bytes)
-
-            if len(ocr_text) < settings.ocr_min_text_length:
-                continue
-
+            
             valid_images.append(f"[Image with text: {ocr_text}]")
         
         return valid_images
