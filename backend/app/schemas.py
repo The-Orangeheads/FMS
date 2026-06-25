@@ -49,9 +49,11 @@ class VectorInsertRequest(BaseModel):
 class VectorQueryRequest(BaseModel):
     text: str
     rerank: bool = True
+    excluded_directories: list[str] = []
 
 class ImgQueryRequest(BaseModel):
     path: str
+    excluded_directories: list[str] = []
     
 class QueryResultMatch(BaseModel):
     text: str

@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "electron": "^42.5.0",
+    "pdfjs-dist": "^6.0.227",
+    "react-hot-toast": "^2.6.0"
+  }
+}

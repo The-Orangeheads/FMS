@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 import threading
 import itertools
-
+import os
 class FilesDB:
     FILES_TABLE = "tracked_files"
     EMBEDDING_IDS_TABLE = "embedding_ids"
@@ -26,13 +26,19 @@ class FilesDB:
         return self._local.cursor
     
     def __init__(self, data_path: str):
+        
         self.db_path = data_path + "\\duplicates_db.sqlite"
         self._local = threading.local()
 
+        # self.cursor.execute(f"DROP TABLE IF EXISTS {self.FILES_TABLE}")
+        # self.cursor.execute(f"DROP TABLE IF EXISTS {self.EMBEDDING_IDS_TABLE}")
+        # self.cursor.execute(f"DROP TABLE IF EXISTS {self.EDGES_TABLE}")
+        
         self.cursor.execute(f"""
                             CREATE TABLE IF NOT EXISTS {self.FILES_TABLE} (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 file_path TEXT NOT NULL UNIQUE,
+                                directory TEXT, 
                                 file_type TEXT,
                                 embd_signature TEXT,
                                 dd_signature TEXT,
@@ -127,11 +133,14 @@ class FilesDB:
 
     def save_file(self, embeddings: list[list[float]], contents: list[str | None], metadatas: list[dict[str, Any]], file_path: str, file_type: str, mdate: int, fsize: int):
         # insert in FILES_TABLE (file_path, file_type, NULL, NULL")
+        directory_path = os.path.dirname(file_path)
+
+        # insert in FILES_TABLE
         self.cursor.execute(
             f"INSERT INTO {self.FILES_TABLE} "
-            f"(file_path, file_type, embd_signature, dd_signature, mdate, file_size) "
-            f"VALUES (?, ?, NULL, NULL, ?, ?)",
-            (file_path, file_type, mdate, fsize),
+            f"(file_path, directory, file_type, embd_signature, dd_signature, mdate, file_size) "
+            f"VALUES (?, ?, ?, NULL, NULL, ?, ?)",
+            (file_path, directory_path, file_type, mdate, fsize),
         )
         file_id = self.cursor.lastrowid
 
@@ -519,3 +528,9 @@ class FilesDB:
         results = self.cursor.fetchall()
         return results
     
+    def get_all_directories(self) -> list[str]:
+        """Returns a deduplicated list of all directories currently tracked."""
+        self.cursor.execute(
+            f"SELECT DISTINCT directory FROM {self.FILES_TABLE} WHERE directory IS NOT NULL"
+        )
+        return [row[0] for row in self.cursor.fetchall()]

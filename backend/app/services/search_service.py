@@ -25,9 +25,20 @@ class SearchService:
             return None
         return 1 / (1 + math.exp(-((raw_logit - DISPLAY_SHIFT) / DISPLAY_TEMP)))
     
-    def collect_unique_candidates(self, query):
+    def collect_unique_candidates(self, query, excluded_directories: list[str] = None):
         query_embedding = embedding_service.get_query_embedding(query, model_name="auto")
-        results = self.collection.query(query_embedding, self.top_k * 3) 
+        
+        # 1. Build the filter
+        where_filter = None
+        if excluded_directories and len(excluded_directories) > 0:
+            where_filter = {"directory": {"$nin": excluded_directories}}
+
+        # 2. Pass the filter to the query
+        results = self.collection.query(
+            embedding=query_embedding, 
+            k=self.top_k * 3,
+            where_filter=where_filter # Inject the filter here
+        ) 
         
         seen = {}
         for r in results:
@@ -36,7 +47,7 @@ class SearchService:
                 seen[path] = r
          
         return list(seen.values())[:self.top_k]
-
+    
     def rerank_candidates(self, query, unique):
         if not unique:
             return []
@@ -78,8 +89,10 @@ class SearchService:
           })
         return sorted(raw_results, key=lambda x: x["score"], reverse=True)[:self.top_k]
 
-    def search(self, query, rerank: bool = True):
-        unique = self.collect_unique_candidates(query)
+    def search(self, query, rerank: bool = True, excluded_directories: list[str] = None):
+        # Pass the excluded_directories to the collection method
+        unique = self.collect_unique_candidates(query, excluded_directories)
+        
         if rerank:
             return self.rerank_candidates(query, unique)
         return self.raw_candidates_to_results(unique)

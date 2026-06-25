@@ -34,12 +34,20 @@ class ChromaDBImpl():
             metadatas=metadatas,
         )
 
-    def query(self, embedding: list[float], k: int) -> list[dict[str, Any]]:
-        results = self.collection.query(
-            query_embeddings=[embedding],
-            n_results=k,
-            include=["metadatas", "distances", "documents"]
-        )
+    def query(self, embedding: list[float], k: int, where_filter: dict[str, Any] = None) -> list[dict[str, Any]]:
+        # 1. Build the base query parameters
+        query_params = {
+            "query_embeddings": [embedding],
+            "n_results": k,
+            "include": ["metadatas", "distances", "documents"]
+        }
+        
+        # 2. Inject the pre-filter if the user provided one
+        if where_filter:
+            query_params["where"] = where_filter
+
+        # 3. Execute with unpacked parameters
+        results = self.collection.query(**query_params)
         
         ids = results["ids"][0]
         metas = results["metadatas"][0]    # list of metadata dicts (may be empty dicts)
@@ -78,16 +86,22 @@ class ChromaDBImpl():
         self.collection.delete(ids=ids)
 
     #TODO test if returned distasnces are always sorted or not
-    def query_similarity(self, embedding: list[float], min_similarity: float, min_k: int = 16, max_k: int = 1048576) -> list[dict[str, Any]]:
+    def query_similarity(self, embedding: list[float], min_similarity: float, min_k: int = 16, max_k: int = 1048576, where_filter: dict[str, Any] = None) -> list[dict[str, Any]]:
         k = min(min_k, max_k)
         max_dist = 1.0 - min_similarity
+        
         while(k <= max_k):
-            results = self.collection.query(
-                query_embeddings=[embedding],
-                n_results=k,
-                include=["metadatas", "distances"]
-            )
-            if(float(results['distances'][0][-1]) > max_dist): #TODO try replacing checking last with checking overall minimum
+            query_params = {
+                "query_embeddings": [embedding],
+                "n_results": k,
+                "include": ["metadatas", "distances"]
+            }
+            if where_filter:
+                query_params["where"] = where_filter
+                
+            results = self.collection.query(**query_params)
+            
+            if(float(results['distances'][0][-1]) > max_dist): 
                 break
             k *= 2
         

@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
-
+from app.services.files_db_service import files_db_service
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 def _validate_filename(filename: str) -> bool:
@@ -18,6 +18,14 @@ def _validate_filename(filename: str) -> bool:
         return False
     return True
 
+@router.get("/directories")
+async def get_directories():
+    """
+    Returns a list of all unique tracked directories.
+    Used by the frontend UI to populate the exclusion filter checkboxes.
+    """
+    directories = files_db_service.get_all_directories()
+    return {"directories": directories}
 @router.get("/display/{filename}")
 async def display_file(filename: str):
     """
@@ -30,3 +38,4 @@ async def display_file(filename: str):
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path, media_type=None)
+

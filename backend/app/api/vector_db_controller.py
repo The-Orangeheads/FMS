@@ -30,25 +30,36 @@ def _get_service_for_collection(collection: str) -> ChromaDBImpl:
         )
     return service
 
-def text_query_with_mode(chunk_input, rerank: bool):
+def text_query_with_mode(chunk_input, rerank: bool, excluded_directories: list[str] = None):
     text_model = (settings.DEFAULT_TEXT_EMBEDDING_MODEL
                   if settings.cur_text_embedding_model == "auto"
                   else settings.cur_text_embedding_model)
 
-    results = search_service.search(chunk_input.text, rerank=rerank)
-
+    results = search_service.search(
+        chunk_input.text, 
+        rerank=rerank, 
+        excluded_directories=excluded_directories
+    )
     embedding_service._get_model(text_model).free_vram()
 
     return results
 
-def image_query(chunk_input, score_correction : bool):
+def image_query(chunk_input, score_correction: bool, excluded_directories: list[str] = None):
     image_model = (settings.DEFAULT_IMAGE_EMBEDDING_MODEL
                     if settings.cur_image_embedding_model == "auto"
                     else settings.cur_image_embedding_model)
     print(image_model)
     img_emb_res = embedding_service.process_embeddings(image_model, [chunk_input])
-    raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=settings.top_k)
     
+    where_filter = None
+    if excluded_directories and len(excluded_directories) > 0:
+        where_filter = {"directory": {"$nin": excluded_directories}}
+    
+    raw_img_hits = COLLECTION_MAP["images"].query(
+        img_emb_res.results[0].vector, 
+        k=settings.top_k,
+        where_filter=where_filter
+    )
     model = embedding_service._get_model(image_model)
     results = []
 
@@ -77,7 +88,11 @@ def image_query(chunk_input, score_correction : bool):
 async def unified_query(req: VectorQueryRequest):
     try:
         chunk_input = ChunkInput(text=req.text)
-        results = text_query_with_mode(chunk_input, req.rerank) + image_query(chunk_input, True)
+        
+        text_results = text_query_with_mode(chunk_input, req.rerank, req.excluded_directories)
+        img_results = image_query(chunk_input, True, req.excluded_directories)
+        
+        results = text_results + img_results
         results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
         return {"results": results[:settings.top_k], "reranked": req.rerank}
@@ -95,7 +110,7 @@ async def reverse_image_query(req: ImgQueryRequest):
             image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
         chunk_input = ChunkInput(image_base64=image_b64)
-        results = image_query(chunk_input, False)
+        results = image_query(chunk_input, False, req.excluded_directories)
         results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
         return {"results": results}

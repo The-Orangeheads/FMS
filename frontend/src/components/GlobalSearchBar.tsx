@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { IconImageSearch, IconSearch } from "./icons";
 import { API_URL } from "../config";
 import toast from "react-hot-toast";
@@ -23,6 +23,38 @@ export function GlobalSearchBar({
 }: GlobalSearchBarProps) {
   const activeRequestId = useRef(0);
 
+  // --- NEW: Filter State ---
+  const [showFilters, setShowFilters] = useState(false);
+  const [availableDirectories, setAvailableDirectories] = useState<string[]>([]);
+  const [excludedDirectories, setExcludedDirectories] = useState<string[]>([]);
+
+  // --- NEW: Fetch Directories on Mount ---
+  useEffect(() => {
+    const fetchDirectories = async () => {
+      try {
+        // 1. Update the endpoint URL
+        const res = await fetch(`${API_URL}/api/directory/paths`);
+        if (res.ok) {
+          const data = await res.json();
+          // 2. Update the JSON key to match the response
+          setAvailableDirectories(data.dirs || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch directories:", error);
+      }
+    };
+    fetchDirectories();
+  }, []);
+
+  // --- NEW: Toggle Exclusion Logic ---
+  const handleToggleDirectory = (dir: string) => {
+    setExcludedDirectories((prev) =>
+      prev.includes(dir)
+        ? prev.filter((d) => d !== dir) // Re-include if it was excluded
+        : [...prev, dir]                // Exclude it
+    );
+  };
+
   const runReverseImageSearch = async (selectedPath: string) => {
     const requestId = ++activeRequestId.current;
     onSearchStart(selectedPath);
@@ -34,6 +66,7 @@ export function GlobalSearchBar({
         },
         body: JSON.stringify({
           path: selectedPath,
+          excluded_directories: excludedDirectories, // <-- Injected
         }),
       });
 
@@ -46,6 +79,7 @@ export function GlobalSearchBar({
           },
           body: JSON.stringify({
             path: selectedPath,
+            excluded_directories: excludedDirectories, // <-- Injected
           }),
         });
       }
@@ -97,7 +131,8 @@ export function GlobalSearchBar({
         },
         body: JSON.stringify({
           text: searchValue,
-          rerank: false
+          rerank: false,
+          excluded_directories: excludedDirectories, // <-- Injected
         }),
       });
 
@@ -116,7 +151,8 @@ export function GlobalSearchBar({
         },
         body: JSON.stringify({
           text: searchValue,
-          rerank: true
+          rerank: true,
+          excluded_directories: excludedDirectories, // <-- Injected
         }),
       });
 
@@ -136,7 +172,7 @@ export function GlobalSearchBar({
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl flex flex-col gap-3">
       <div className="relative">
         <label htmlFor="global-search" className="sr-only">
           Search files and semantic context
@@ -179,7 +215,30 @@ export function GlobalSearchBar({
               )}
             </div>
           </div>
-           <button
+          
+          {/* NEW: Filter Toggle Button */}
+          {availableDirectories.length > 0 && (
+            <button
+              type="button"
+              title="Toggle directory filters"
+              aria-label="Toggle directory filters"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 transition-all duration-300 ease-material focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] ${
+                showFilters || excludedDirectories.length > 0
+                  ? "border-primary/50 bg-primary/10 text-primary"
+                  : "border-border bg-surface-muted text-foreground-muted hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+              </svg>
+              {excludedDirectories.length > 0 && (
+                <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-primary" />
+              )}
+            </button>
+          )}
+
+          <button
             type="button"
             title="Reverse image search"
             aria-label="Attach or search by image"
@@ -188,6 +247,7 @@ export function GlobalSearchBar({
           >
             <IconImageSearch className="h-6 w-6" />
           </button>
+
           <button
             onClick={handleSearch}
             type="submit"
@@ -197,6 +257,40 @@ export function GlobalSearchBar({
           </button>
         </form>
       </div>
+
+      {/* NEW: Filter Dropdown Menu */}
+      {showFilters && availableDirectories.length > 0 && (
+        <div className="w-full rounded-2xl border-2 border-border bg-surface-elevated p-4 shadow-soft animate-in fade-in slide-in-from-top-2">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">Search Locations</h3>
+            <span className="text-xs text-foreground-muted">
+              {availableDirectories.length - excludedDirectories.length} of {availableDirectories.length} selected
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+            {availableDirectories.map((dir) => {
+              const isActive = !excludedDirectories.includes(dir);
+              return (
+                <label
+                  key={dir}
+                  className="flex items-center space-x-3 rounded-lg p-2 transition-colors hover:bg-surface-muted cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={() => handleToggleDirectory(dir)}
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary focus:ring-offset-surface-elevated"
+                  />
+                  <span className="text-sm text-foreground truncate" title={dir} dir="rtl" style={{textAlign: "left"}}>
+                    {/* dir="rtl" on truncate helps show the folder name instead of just the root path if it overflows */}
+                    &lrm;{dir}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

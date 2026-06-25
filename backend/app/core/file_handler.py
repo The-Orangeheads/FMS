@@ -107,7 +107,19 @@ class FileHandler:
 
         # 3. Embed using ONLY the valid data
         embedded_data = embedding_service.process_embeddings(target_model, valid_inputs, notify_cb)
-
+        for idx, item in enumerate(embedded_data.results):
+            # Use valid_raw_chunks instead of result_chunks to keep indices aligned
+            text_content = valid_chunks[idx]['text']
+            page_number = valid_chunks[idx]['page_number']
+            embeddings.append(item.vector)
+            contents.append(text_content)
+            metadatas.append({
+                "path": path,
+                "directory": os.path.dirname(path), # <-- ADD THIS LINE
+                "page_number": page_number,
+                "mdate": stat.st_mtime_ns,
+                "fsize": stat.st_size
+            })
         stat = Path(path).stat()
 
         # 4. Store in DOCUMENTS
@@ -155,7 +167,6 @@ class FileHandler:
         self.last_model = target_model
         
         # 1. Read and Encode Image to Base64
-
         if notify_cb:
             notify_cb(f"Encoding image... : {file_name} : 10")
             
@@ -171,13 +182,11 @@ class FileHandler:
         )]
         
         # 3. Embed using the current images embedding model
-        
         embedded_data = embedding_service.process_embeddings(target_model, inputs, notify_cb)
 
         stat = Path(path).stat()
         
         # 4. Store in IMAGES Collection (storage_filename used for display endpoint)
-
         if notify_cb:
             notify_cb(f"Storing embedding... : {file_name} : 95")
 
@@ -185,11 +194,13 @@ class FileHandler:
         contents = []
         metadatas = []
         
+        # This is where the updated loop belongs!
         for item in embedded_data.results:
             embeddings.append(item.vector)
             contents.append(None)
             metadatas.append({
                 "path": path,
+                "directory": os.path.dirname(path), # <-- Added here
                 "mdate": stat.st_mtime_ns,
                 "fsize": stat.st_size
                 })
