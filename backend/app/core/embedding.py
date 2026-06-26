@@ -1,7 +1,7 @@
 from typing import List
 from app.schemas import ChunkInput
 from sentence_transformers import SentenceTransformer, CrossEncoder
-from transformers import AutoModel, AutoProcessor
+from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
 import torch
 from PIL import Image
 import io
@@ -11,7 +11,6 @@ import os
 import threading
 
 from app.core.config import settings
-
 
 """
 This ensures that every model we have has a function called `embed`, that function is called
@@ -33,6 +32,7 @@ class EmbeddingModelInterface:
     
     def load_on_vram(self):
         raise NotImplementedError
+
 # --- RECIPE 1: Standard Sentence Transformers (Text Only) ---
 class SBERTModel(EmbeddingModelInterface):
     """
@@ -43,21 +43,34 @@ class SBERTModel(EmbeddingModelInterface):
     """
     def __init__(self, model_name: str):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        if settings.keep_models_in_memory:
-            self.model = SentenceTransformer(model_name, device=self.device)
-            self.on_vram = (self.device == "cuda")
-        else:
-            self.model = SentenceTransformer(model_name, device="cpu")
-            self.on_vram = False
-            
-        print(f"SBERT Model loaded on device: {'cuda' if self.on_vram else 'cpu'}")
         self.vram_lock = threading.Lock()
         self.currently_embedding = 0
 
+        # Quantized
+        if settings.use_quantized_models and self.device == "cuda":
+            print(f"Loading SBERT to VRAM in 8-bit...")
+            quant_config = BitsAndBytesConfig(load_in_8bit=True, llm_int8_threshold=6.0)
+            self.model = SentenceTransformer(
+                model_name, 
+                model_kwargs={
+                    "quantization_config": quant_config,
+                    "torch_dtype": torch.float16
+                },
+                device="cuda"
+            )
+            self.on_vram = True
+            
+        # Un-Quantized
+        else:
+            target_device = "cuda" if settings.keep_models_in_memory and self.device == "cuda" else "cpu"
+            print(f"Loading SBERT to {target_device.upper()} RAM...")
+            self.model = SentenceTransformer(model_name, device=target_device)
+            self.on_vram = (target_device == "cuda")
+
     def free_vram(self):
-        if self.device != "cuda" or settings.keep_models_in_memory:
+        if self.device != "cuda" or settings.keep_models_in_memory or settings.use_quantized_models:
             return
+            
         with self.vram_lock:
             if (not self.on_vram) or (self.currently_embedding > 0):
                 return
@@ -65,17 +78,19 @@ class SBERTModel(EmbeddingModelInterface):
             self.model = self.model.to("cpu")
             torch.cuda.empty_cache()
             self.on_vram = False
-            print(f"SBERT Model loaded on device: cpu")
+            print(f"SBERT Model moved to CPU RAM.")
             
     def load_on_vram(self):
-        if self.device != "cuda":
+        if self.device != "cuda" or settings.use_quantized_models:
             return
+            
         with self.vram_lock:
             if self.on_vram:
                 return
+            
             self.model = self.model.to("cuda")
             self.on_vram = True
-            print(f"SBERT Model loaded on device: cuda")
+            print(f"SBERT Model moved to VRAM.")
 
     """
     This is the function from the interface above, we override it here. It takes a list of chunks
@@ -146,6 +161,7 @@ class SBERTModel(EmbeddingModelInterface):
         
         return ordered_embds
 
+
 """
 The next part is longer because it deals with models like SigLip. Models that actually deal with
 text and images, converts them into the same language (vectors). So the encoding process is a bit
@@ -157,24 +173,34 @@ class SiglipModel(EmbeddingModelInterface):
     def __init__(self, model_id: str):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.processor = AutoProcessor.from_pretrained(model_id)
-
-        if settings.keep_models_in_memory:
-            self.model = AutoModel.from_pretrained(model_id).to(self.device).eval()
-            self.on_vram = (self.device == "cuda")
-        else:
-            self.model = AutoModel.from_pretrained(model_id).to("cpu").eval()
-            self.on_vram = False
-            
-        print(f"SigLip Model loaded on device: {'cuda' if self.on_vram else 'cpu'}")
         self.vram_lock = threading.Lock()
         self.currently_embedding = 0
+        
+        # Native 16-bit (Bypasses all bitsandbytes bugs while keeping VRAM tiny)
+        if settings.use_quantized_models and self.device == "cuda":
+            print(f"Loading SigLip to VRAM in Native 16-bit...")
+            self.model = AutoModel.from_pretrained(
+                model_id,
+                torch_dtype=torch.float16, # Cuts VRAM in half natively
+                device_map="cuda"
+            ).eval()
+            self.on_vram = True
+            
+        # Full Precision Fallback
+        else:
+            target_device = "cuda" if settings.keep_models_in_memory and self.device == "cuda" else "cpu"
+            print(f"Loading SigLip to {target_device.upper()} RAM...")
+            dtype = torch.float16 if target_device == "cuda" else torch.float32
+            self.model = AutoModel.from_pretrained(model_id, torch_dtype=dtype).to(target_device).eval()
+            self.on_vram = (target_device == "cuda")
 
         self.logit_scale = self.model.logit_scale.exp().item()
         self.logit_bias = self.model.logit_bias.item()
 
     def free_vram(self):
-        if self.device != "cuda" or settings.keep_models_in_memory:
+        if self.device != "cuda" or settings.keep_models_in_memory or settings.use_quantized_models:
             return
+            
         with self.vram_lock:
             if (not self.on_vram) or (self.currently_embedding > 0):
                 return
@@ -182,17 +208,19 @@ class SiglipModel(EmbeddingModelInterface):
             self.model = self.model.to("cpu")
             torch.cuda.empty_cache()
             self.on_vram = False
-            print(f"SigLip Model loaded on device: cpu")
+            print(f"SigLip Model moved to CPU RAM.")
             
     def load_on_vram(self):
-        if self.device != "cuda":
+        if self.device != "cuda" or settings.use_quantized_models:
             return
+            
         with self.vram_lock:
             if self.on_vram:
                 return
+            
             self.model = self.model.to("cuda")
             self.on_vram = True
-            print(f"SigLip Model loaded on device: cuda")
+            print(f"SigLip Model moved to VRAM.")
     
     def _to_embedding_tensor(self, outputs):
         """
@@ -222,12 +250,12 @@ class SiglipModel(EmbeddingModelInterface):
 
     @torch.no_grad()
     def embed(self, chunks: List[ChunkInput], notify_cb=None, display_name: str = "",  startPercent: int=0, endPercent: int=0) -> List[List[float]]:
-
         if notify_cb:
             notify_cb(f"Loading Embedding Model... : {display_name} : {int(round(startPercent + (endPercent-startPercent)*0.25))}")
         
         with self.vram_lock:
             self.currently_embedding += 1
+            
         self.load_on_vram()
 
         embeddings: List[List[float]] = []
@@ -236,25 +264,32 @@ class SiglipModel(EmbeddingModelInterface):
             notify_cb(f"Embedding image... : {display_name} : {int(round(startPercent + (endPercent-startPercent)*0.35))}")
         
         for chunk in chunks:
-            if chunk.image_base64:
-                image_data = base64.b64decode(chunk.image_base64)
-                image = Image.open(io.BytesIO(image_data)).convert("RGB")
+            # Autocast keeps the math completely safe
+            with torch.autocast(device_type="cuda", dtype=torch.float16):
+                if chunk.image_base64:
+                    image_data = base64.b64decode(chunk.image_base64)
+                    image = Image.open(io.BytesIO(image_data)).convert("RGB")
+                    
+                    inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+                    
+                    # Because the model is now native 16-bit, we must cast the 32-bit image to 16-bit
+                    if "pixel_values" in inputs and self.device == "cuda":
+                        inputs["pixel_values"] = inputs["pixel_values"].to(torch.float16)
+                        
+                    outputs = self.model.get_image_features(**inputs)
 
-                inputs = self.processor(images=image, return_tensors="pt").to(self.device)
-                outputs = self.model.get_image_features(**inputs)
+                elif chunk.text:
+                    inputs = self.processor(
+                        text=[chunk.text],
+                        return_tensors="pt",
+                        padding="max_length",
+                        max_length=64,
+                        truncation=True,
+                    ).to(self.device)
+                    outputs = self.model.get_text_features(**inputs)
 
-            elif chunk.text:
-                inputs = self.processor(
-                    text=[chunk.text],
-                    return_tensors="pt",
-                    padding="max_length",
-                    max_length=64,
-                    truncation=True,
-                ).to(self.device)
-                outputs = self.model.get_text_features(**inputs)
-
-            else:
-                continue
+                else:
+                    continue
 
             vec = self._to_embedding_tensor(outputs)
 
@@ -292,6 +327,5 @@ class CrossEncoderReranker:
             logits = self.model.model(**features).logits.squeeze(-1)
             
         return logits.tolist()   # raw logits, no sigmoid
-
 
 reranker = CrossEncoderReranker()
