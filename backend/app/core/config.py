@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     
-    # =========================== CONSTANTS (.env) ===========================
+    # ======================== CONSTANTS (.env) ===========================
 
     # === PROJECT INFO ===
     PROJECT_NAME: str = "Orangeheads - FMS"
@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     chunk_overlap: int = 50
     pdf_complexity_threshold: int = 9
     sync_interval : float = 1 # IN MINUTES
-    keep_models_in_memory: bool = False
+    keep_models_in_memory: bool = True
+    use_quantized_models: bool = True
     include_metadata: bool = True
     search_threshold: float = 0.1
     similarity_threshold: float = 0.9

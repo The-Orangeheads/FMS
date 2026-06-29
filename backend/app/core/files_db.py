@@ -34,7 +34,8 @@ class FilesDB:
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 file_path TEXT NOT NULL UNIQUE,
                                 file_type TEXT,
-                                embd_signature TEXT,
+                                text_embd_signature TEXT,
+                                image_embd_signature TEXT,
                                 dd_signature TEXT,
                                 mdate INTEGER,
                                 file_size INTEGER
@@ -46,11 +47,16 @@ class FilesDB:
                             ON {self.FILES_TABLE} (file_path);
                             """)
         
+        self.cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS type_idx
+                    ON {self.FILES_TABLE} (file_type);
+                    """)
 
         self.cursor.execute(f"""
                             CREATE TABLE IF NOT EXISTS {self.EMBEDDING_IDS_TABLE} (
                                 id INTEGER,
                                 embedding_id TEXT PRIMARY KEY,
+                                embedding_type TEXT,
                                 FOREIGN KEY (id) REFERENCES {self.FILES_TABLE}(id) ON DELETE CASCADE
                             )
                             """)
@@ -106,34 +112,40 @@ class FilesDB:
         """
         returns a dictionary for all files in the db:
 
-        ["file_path"] -> {"file_id": file_id, "embd_signature": embd_signature}
+        ["file_path"] -> {"file_id": file_id, "text_embd_signature": text_embd_signature, "image_embd_signature": image_embd_signature}
         """
         
         self.cursor.execute(
-            f"SELECT id, file_path, embd_signature "
+            f"SELECT id, file_path, text_embd_signature, image_embd_signature "
             f"FROM {self.FILES_TABLE}"
         )
         return {
             file_path: {
                 "file_id": file_id,
-                "embd_signature": embd_signature,
+                "text_embd_signature": text_embd_signature,
+                "image_embd_signature": image_embd_signature
             }
-            for file_id, file_path, embd_signature in self.cursor.fetchall()
+            for file_id, file_path, text_embd_signature, image_embd_signature in self.cursor.fetchall()
         }
     
     def _get_batched(self, seq, n):
         for i in range(0, len(seq), n):
             yield seq[i : i + n]
 
-    def save_file(self, embeddings: list[list[float]], contents: list[str | None], metadatas: list[dict[str, Any]], file_path: str, file_type: str, mdate: int, fsize: int):
-        # insert in FILES_TABLE (file_path, file_type, NULL, NULL")
-        self.cursor.execute(
+    def save_file(self, embed_type: str, embeddings: list[list[float]], contents: list[str | None], metadatas: list[dict[str, Any]], file_path: str, file_type: str, mdate: int, fsize: int):
+        # insert in FILES_TABLE (file_path, file_type, NULL, NULL, NULL")
+        res = self.cursor.execute(
             f"INSERT INTO {self.FILES_TABLE} "
-            f"(file_path, file_type, embd_signature, dd_signature, mdate, file_size) "
-            f"VALUES (?, ?, NULL, NULL, ?, ?)",
+            f"(file_path, file_type, mdate, file_size) "
+            f"VALUES (?, ?, ?, ?) "
+            f"ON CONFLICT(file_path) DO UPDATE SET "
+            f"mdate=excluded.mdate, "
+            f"file_size=excluded.file_size "
+            f"RETURNING id",
             (file_path, file_type, mdate, fsize),
-        )
-        file_id = self.cursor.lastrowid
+        ).fetchone()
+        
+        file_id = res[0]
 
         # if file type == "image" use images_db_service, else use documents_db_service 
         # insert embeddings, contents, metadatas in chroma
@@ -142,46 +154,33 @@ class FilesDB:
         # insert link chroma_ids to the fileid in EMBEDDING_IDS_TABLE
         #! we insert this into sqlite first so that we don't get reference-less vectors in chroma on ungraceful exit
         self.cursor.executemany(
-            f"INSERT INTO {self.EMBEDDING_IDS_TABLE} (id, embedding_id) VALUES (?, ?)",
-            [(file_id, eid) for eid in chroma_ids],
+            f"INSERT INTO {self.EMBEDDING_IDS_TABLE} (id, embedding_id, embedding_type) VALUES (?, ?, ?)",
+            [(file_id, eid, embed_type) for eid in chroma_ids],
         )
         
         self.conn.commit()
 
-        service = images_db_service if file_type == "image" else documents_db_service
+        service = images_db_service if embed_type == "image" else documents_db_service
         chroma_ids = service.insert(
             ids=chroma_ids,
             embeddings=embeddings,
             contents=contents,
             metadatas=metadatas
         )
-        
 
         # set embd_signature for id to f"{mdate}:{fsize}
         self.cursor.execute(
-            f"UPDATE {self.FILES_TABLE} SET embd_signature = ? WHERE id = ?",
+            f"UPDATE {self.FILES_TABLE} SET {"image_embd_signature" if embed_type == "image" else "text_embd_signature"} = ? WHERE id = ?",
             (f"{mdate}:{fsize}", file_id),
         )
 
         self.conn.commit()
-
-    # def _get_embedding_ids(self, id : int):
-    #     self.cursor.execute(
-    #         f"""
-    #         SELECT embedding_id
-    #         FROM {self.EMBEDDING_IDS_TABLE}
-    #         WHERE id = ?
-    #         """,
-    #         (id,),
-    #     )
-        
-    #     return [row[0] for row in self.cursor.fetchall()]
-
-    def delete_ids(self, ids: list[int]):
+    
+    def delete_ids(self, ids: list[int], embd_type: str):
         if not ids:
             return
         
-        chroma_ids = [[], []]
+        chroma_ids = []
         batched_ids = list(self._get_batched(ids, 1000))
 
         # get all embedding_ids from EMBEDDING_IDS_TABLE where id = ids
@@ -190,55 +189,37 @@ class FilesDB:
 
             self.cursor.execute(
                 f"""
-                SELECT e.embedding_id, f.file_type
-                FROM {self.EMBEDDING_IDS_TABLE} e
-                JOIN {self.FILES_TABLE} f ON e.id = f.id
-                WHERE e.id IN ({ids_batch})
+                SELECT embedding_id
+                FROM {self.EMBEDDING_IDS_TABLE}
+                WHERE embedding_type = "{embd_type}" AND id IN ({ids_batch})
                 """,
                 batch,
             )
             
-            for embd_id, file_type in self.cursor.fetchall():
-                if embd_id is None:
-                    continue
-                chroma_ids[1 if file_type == "image" else 0].append(embd_id)
+            for embd_id in self.cursor.fetchall():
+                chroma_ids.append(embd_id[0])
         
-        if chroma_ids[0]:
-            documents_db_service.delete(chroma_ids[0])
+        if chroma_ids:
+            (images_db_service if embd_type == "image" else documents_db_service).delete(chroma_ids)
         
-        if chroma_ids[1]:
-            images_db_service.delete(chroma_ids[1])
-        
-        # # erase all from EMBEDDING_IDS_TABLE where id = ids
-        # for batch in batched_ids:
-        #     ids_batch = ",".join("?" * len(batch))
-        #     self.cursor.execute(
-        #         f"DELETE FROM {self.EMBEDDING_IDS_TABLE} "
-        #         f"WHERE id IN ({ids_batch})",
-        #         batch,
-        #     )
-            
-        # # erase all from EDGES_TABLE where id1 or id2 = id
-        # for batch in batched_ids:
-        #     ids_batch = ",".join("?" * len(batch))
-        #     self.cursor.execute(
-        #         f"DELETE FROM {self.EDGES_TABLE} "
-        #         f"WHERE node_1 IN ({ids_batch}) OR node_2 IN ({ids_batch})",
-        #         ids_batch + ids_batch,
-        #     )
-
-        #! automatically cascades cause of foreign keys
-        # erase all from FILES_TABLE where id = ids
         for batch in batched_ids:
             ids_batch = ",".join("?" * len(batch))
             self.cursor.execute(
-                f"DELETE FROM {self.FILES_TABLE} "
+                f"UPDATE {self.FILES_TABLE} "
+                f"SET {'image_embd_signature' if embd_type == 'image' else 'text_embd_signature'} = NULL "
                 f"WHERE id IN ({ids_batch})",
                 batch,
             )
-
+        
         self.conn.commit()
     
+    def clean_file_table(self):
+        self.cursor.execute(
+                f"DELETE FROM {self.FILES_TABLE} "
+                f"WHERE text_embd_signature is NULL AND image_embd_signature is NULL",
+            )
+        self.conn.commit()
+
     def __exit__(self, exc_type, exc, tb):
         self.conn.commit()
         self.conn.close()
@@ -292,19 +273,6 @@ class FilesDB:
         else:
             #TODO when documents similarity is implemented
             return []
-    
-    # def update_dd(self):
-    #     # get ids, paths and file_type of all with embd_signature != dd_signature
-
-    #     self.cursor.execute(
-    #         f"SELECT id, file_type FROM {self.FILES_TABLE} "
-    #         f"WHERE embd_signature IS NOT NULL "
-    #         f"AND (dd_signature IS NULL OR embd_signature <> dd_signature)",
-    #     )
-    
-    #     # query similarity based on file_type and save in the db
-    #     for file_id, file_type in self.cursor.fetchall():
-    #         self.add_dd_node(file_id, self.getSimilar(file_id, file_type))
 
     def _process_batch(self, batch_size : int = 1000) -> bool:
         """
@@ -315,13 +283,13 @@ class FilesDB:
 
         cursor = self.cursor.execute(
             f"""
-                SELECT f.id, f.file_type, eid.embedding_id
+                SELECT f.id, f.file_type, eid.embedding_id, f.image_embd_signature
                 FROM {self.FILES_TABLE} f
                 JOIN {self.EMBEDDING_IDS_TABLE} eid ON f.id = eid.id
                 WHERE f.id IN (
                     SELECT id
                     from {self.FILES_TABLE}
-                    WHERE dd_signature IS NOT embd_signature
+                    WHERE dd_signature IS NOT image_embd_signature AND file_type = "image"
                     LIMIT ?
                 )
             """, (batch_size,)
@@ -337,11 +305,11 @@ class FilesDB:
         """
             result[id] = (file_type, embedding_id_list)
         """
-        for f_id, file_type, embedding_id in rows:
-            result.setdefault(f_id, (file_type, []))[1].append(embedding_id)
+        for f_id, file_type, embedding_id, image_embd_signature in rows:
+            result.setdefault(f_id, (file_type, image_embd_signature, []))[2].append(embedding_id) # for images
 
-        update_ids : list[int] = []
-        for f_id, (file_type, embedding_ids) in result.items():
+        update_ids : list[(int, str)] = []
+        for f_id, (file_type, embd_signature, embedding_ids) in result.items():
             
             adj = self.get_similar(
                 e_ids=embedding_ids,
@@ -353,16 +321,14 @@ class FilesDB:
                 adjacency=adj
             )
 
-
-
-            update_ids.append(f_id)
+            update_ids.append((f_id, embd_signature))
 
         self.cursor.executemany(
             f"""
                 UPDATE {self.FILES_TABLE}
-                SET dd_signature = embd_signature
+                SET dd_signature = ?
                 WHERE id = ?
-            """, [(i,) for i in update_ids]
+            """, [(embd_signature,i,) for (i, embd_signature) in update_ids]
         )
 
         return True

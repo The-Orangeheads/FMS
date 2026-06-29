@@ -134,7 +134,7 @@ class EmbeddingService:
             
         return self.loaded_models[model_key]
 
-    def process_embeddings(self, model_name: str, chunks: List[ChunkInput], notify_cb=None) -> EmbeddingResponse:
+    def process_embeddings(self, model_name: str, chunks: List[ChunkInput], notify_cb=None, display_name: str = "", startPercent: int=0, endPercent: int=0) -> EmbeddingResponse:
         start_time = time.time()
         
         effective_model_key = model_name
@@ -146,7 +146,7 @@ class EmbeddingService:
             print(f"DEBUG: Ingestion Auto-routing to Multilingual: {effective_model_key}")
         
         model = self._get_model(effective_model_key)
-        vectors = model.embed(chunks, notify_cb)
+        vectors = model.embed(chunks, notify_cb, display_name, startPercent, endPercent)
         
         results = []
         for i, vector in enumerate(vectors):
