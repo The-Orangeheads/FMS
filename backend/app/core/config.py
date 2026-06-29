@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     include_metadata: bool = True
     search_threshold: float = 0.1
     similarity_threshold: float = 0.9
+
+    ocr_max_workers: int = 4
+    ocr_crop_padding: int = 10
     
     class Config:
         """Pydantic config."""

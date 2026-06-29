@@ -17,7 +17,7 @@ import logoDark from "./assets/logo_dark.svg";
 import { Toaster } from "react-hot-toast";
 import { API_URL } from "./config";
 
-const WAIT_FOR_BACKEND = false;
+const WAIT_FOR_BACKEND = true;
 
 type View = "main" | "search" | "recents" | "cleanup" | "embedding";
 

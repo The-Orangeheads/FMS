@@ -1,27 +1,16 @@
-import io
-import numpy as np
-import torch
-from PIL import Image
-from app.core.config import settings
-import easyocr
+"""
+OCR text-ingestion adapter for FMS.
+
+Contract: extract_text(image_bytes) -> str
+Used by image->document ingestion and PDF embedded-image extraction.
+"""
+
+from app.core.hybrid_ocr_engine import HybridOCREngine
+
 
 class OCR:
     def __init__(self):
-        self.reader = easyocr.Reader(["en", "ar"], gpu=torch.cuda.is_available())
+        self._engine = HybridOCREngine()
 
     def extract_text(self, image: bytes) -> str:
-        try:
-            img = Image.open(io.BytesIO(image)).convert("RGB")
-        except Exception as e:
-            raise Exception(f"Error loading image: {e}")
-        
-        try:
-            results = self.reader.readtext(np.array(img))
-        except Exception as e:
-            raise Exception(f"Error running OCR: {e}")
-        
-        extracted_texts = [text for _, text, _ in results if text]
-        res = " ".join(extracted_texts)
-        
-        return res
-    
+        return self._engine.extract_text(image)
