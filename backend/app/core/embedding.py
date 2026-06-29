@@ -308,7 +308,7 @@ class CrossEncoderReranker:
     MAX_LENGTH = 1024
     
     def __init__(self):
-        self._device = "cuda"
+        self._device = "cpu"
         self.model = CrossEncoder("BAAI/bge-reranker-v2-m3", device=self._device)
     
     def rerank(self, query: str, candidates: List) -> list:
