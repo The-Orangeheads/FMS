@@ -9,7 +9,8 @@ contextBridge.exposeInMainWorld('electron', {
         'open-image-picker', 
         'open-file-in-os',
         'get-file-thumbnail',
-        'read-file-buffer'
+        'read-file-buffer',
+        'delete-files'
       ];
       
       if (validChannels.includes(channel)) {

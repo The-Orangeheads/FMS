@@ -363,7 +363,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
             <div 
             ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto px-6 py-6"
+            className="flex-1 overflow-y-auto px-6 py-6 scrollbar-hidden"
             >
           <fieldset className="mb-8 border-0 p-0">
             <legend className="mb-3 text-sm font-semibold text-foreground">
