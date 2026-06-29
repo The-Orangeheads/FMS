@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ThemeProvider } from "./context/ThemeContext";
+import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { GlobalSearchBar } from "./components/GlobalSearchBar";
 import { RecentlyOpened } from "./components/RecentlyOpened";
 import { SearchResults } from "./components/SearchResults";
@@ -12,7 +12,8 @@ import {
   IconChevronLeft,
   IconChevronRight,
 } from "./components/icons";
-import logo from "./assets/logo.svg";
+import logoLight from "./assets/logo_light.svg";
+import logoDark from "./assets/logo_dark.svg";
 import { Toaster } from "react-hot-toast";
 import { API_URL } from "./config";
 
@@ -24,6 +25,8 @@ type View = "main" | "search" | "recents" | "cleanup" | "embedding";
 function StartupLoader({ onReveal, onReady }: { onReveal: () => void; onReady: () => void }) {
   const [status, setStatus] = useState("Loading app...");
   const [showFadeOut, setShowFadeOut] = useState(false);
+  const { theme } = useTheme();
+  const logoSrc = theme === "dark" ? logoDark : logoLight;
 
   useEffect(() => {
     let isMounted = true;
@@ -99,7 +102,7 @@ function StartupLoader({ onReveal, onReady }: { onReveal: () => void; onReady: (
         {/* Apple-style Logo & Typography Group */}
         <div className="flex items-center gap-5">
           <img 
-            src={logo} 
+            src={logoSrc} 
             alt="Lexica" 
             className="h-24 w-24 object-contain drop-shadow-sm" 
           />
@@ -159,6 +162,8 @@ function Dashboard({ isRevealed = true }: { isRevealed?: boolean }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const { theme } = useTheme();
+  const logoSrc = theme === "dark" ? logoDark : logoLight;
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isReranking, setIsReranking] = useState(false);
@@ -256,7 +261,7 @@ function Dashboard({ isRevealed = true }: { isRevealed?: boolean }) {
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-row items-center gap-2.5">
                 <span className="flex shrink-0 items-center justify-center">
-                  <img src={logo} alt="Lexica logo" className="h-[52px] w-[52px]" />
+                  <img src={logoSrc} alt="Lexica logo" className="h-[52px] w-[52px]" />
                 </span>
                 <div className="flex flex-col justify-center pt-1">
                   <h1 className="font-spartan text-[38px] font-extrabold leading-[0.85] tracking-tight text-foreground">
