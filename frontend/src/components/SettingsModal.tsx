@@ -33,6 +33,7 @@ type Settings = {
   pdfComplexityThreshold: number;
   /** 0.5–0.99: pairs at or above this similarity are treated as duplicates (cleanup graph, etc.). */
   duplicateSimilarityThreshold: number;
+  useQuantizedModels: boolean;
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -47,6 +48,7 @@ const DEFAULT_SETTINGS: Settings = {
   keepModelsInMemory: false,
   pdfComplexityThreshold: 9,
   duplicateSimilarityThreshold: 0.9,
+  useQuantizedModels: true,
 };
 
 function loadFrontendSettings(): Settings {
@@ -92,6 +94,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   );
   const [duplicateSimilarityThreshold, setDuplicateSimilarityThreshold] =
     useState(initialSettings.duplicateSimilarityThreshold);
+  const [useQuantizedModels, setUseQuantizedModels] = useState(
+    initialSettings.useQuantizedModels,
+  );
   const [dirs, setDirs] = useState<string[]>([]);
   const [dirsLoading, setDirsLoading] = useState(false);
   const [dirsFailed, setDirsFailed] = useState(false);
@@ -115,6 +120,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setKeepModelsInMemory(localSettings.keepModelsInMemory);
     setPdfComplexityThreshold(localSettings.pdfComplexityThreshold);
     setDuplicateSimilarityThreshold(localSettings.duplicateSimilarityThreshold);
+    setUseQuantizedModels(localSettings.useQuantizedModels);
 
     try {
       const response = await fetch(`${API_URL}/api/config/`);
@@ -140,6 +146,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             typeof data.duplicate_similarity_threshold === "number"
               ? Math.min(0.99, Math.max(0.5, data.duplicate_similarity_threshold))
               : localSettings.duplicateSimilarityThreshold,
+          useQuantizedModels:
+            data.use_quantized_models ?? localSettings.useQuantizedModels,
         };
         setCommittedValues(newValues);
         setSyncInterval(newValues.syncInterval);
@@ -153,6 +161,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setKeepModelsInMemory(newValues.keepModelsInMemory);
         setPdfComplexityThreshold(newValues.pdfComplexityThreshold);
         setDuplicateSimilarityThreshold(newValues.duplicateSimilarityThreshold);
+        setUseQuantizedModels(newValues.useQuantizedModels);
         persistFrontendSettings(newValues);
       }
     } catch (err) {
@@ -173,6 +182,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setKeepModelsInMemory(committedValues.keepModelsInMemory);
     setPdfComplexityThreshold(committedValues.pdfComplexityThreshold);
     setDuplicateSimilarityThreshold(committedValues.duplicateSimilarityThreshold);
+    setUseQuantizedModels(committedValues.useQuantizedModels);
     onClose();
   };
 
@@ -279,6 +289,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       keepModelsInMemory,
       pdfComplexityThreshold,
       duplicateSimilarityThreshold,
+      useQuantizedModels,
     };
 
     persistFrontendSettings(settings);
@@ -301,6 +312,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         keep_models_in_memory: keepModelsInMemory,
         pdf_complexity_threshold: pdfComplexityThreshold,
         similarity_threshold: duplicateSimilarityThreshold,
+        use_quantized_models: useQuantizedModels,
       }),
     });
 
@@ -496,6 +508,35 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   <span
                     className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform duration-200 ${
                       keepModelsInMemory ? "translate-x-7" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/30 p-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Use quantized models
+                  </p>
+                  <p className="mt-0.5 text-xs text-foreground-muted">
+                    Loads models in 8-bit or 16-bit precision to significantly reduce VRAM usage. Disabling this loads full precision weights.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUseQuantizedModels(!useQuantizedModels)}
+                  role="switch"
+                  aria-checked={useQuantizedModels}
+                  className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border-2 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    useQuantizedModels
+                      ? "border-primary bg-primary"
+                      : "border-border bg-surface-muted"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform duration-200 ${
+                      useQuantizedModels ? "translate-x-7" : "translate-x-1"
                     }`}
                   />
                 </button>

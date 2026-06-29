@@ -30,24 +30,26 @@ def _get_service_for_collection(collection: str) -> ChromaDBImpl:
         )
     return service
 
-def text_query_with_mode(chunk_input, rerank: bool):
+def text_query_with_mode(chunk_input, rerank: bool, directories: list[str] = None):
     text_model = (settings.DEFAULT_TEXT_EMBEDDING_MODEL
                   if settings.cur_text_embedding_model == "auto"
                   else settings.cur_text_embedding_model)
 
-    results = search_service.search(chunk_input.text, rerank=rerank)
+    results = search_service.search(chunk_input.text, rerank=rerank, directories=directories)
 
     embedding_service._get_model(text_model).free_vram()
 
     return results
 
-def image_query(chunk_input, score_correction : bool):
+def image_query(chunk_input, score_correction : bool, directories: list[str] = None):
     image_model = (settings.DEFAULT_IMAGE_EMBEDDING_MODEL
                     if settings.cur_image_embedding_model == "auto"
                     else settings.cur_image_embedding_model)
     print(image_model)
     img_emb_res = embedding_service.process_embeddings(image_model, [chunk_input])
-    raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=settings.top_k)
+    
+    query_k = settings.top_k * 50 if directories else settings.top_k
+    raw_img_hits = COLLECTION_MAP["images"].query(img_emb_res.results[0].vector, k=query_k)
     
     model = embedding_service._get_model(image_model)
     results = []
@@ -58,6 +60,19 @@ def image_query(chunk_input, score_correction : bool):
             score = score * 100 - 10        # optimize the scale and bias
             score = torch.sigmoid(torch.tensor(score)).item()
         meta = hit.get("metadata", {})
+        
+        if directories:
+            path = meta.get("path", "")
+            normalized_path = path.replace("\\", "/")
+            matched = False
+            for d in directories:
+                d_norm = d.replace("\\", "/").rstrip("/")
+                if normalized_path == d_norm or normalized_path.startswith(d_norm + "/"):
+                    matched = True
+                    break
+                    
+            if not matched:
+                continue
         
         # Skip if less than 10% match
         if score < 0.10:
@@ -71,13 +86,13 @@ def image_query(chunk_input, score_correction : bool):
         })
     
     embedding_service._get_model(image_model).free_vram()
-    return results
+    return results[:settings.top_k]
 
 @router.post("/unified/query")
 async def unified_query(req: VectorQueryRequest):
     try:
         chunk_input = ChunkInput(text=req.text)
-        results = text_query_with_mode(chunk_input, req.rerank) + image_query(chunk_input, True)
+        results = text_query_with_mode(chunk_input, req.rerank, req.directories) + image_query(chunk_input, True, req.directories)
         results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
         return {"results": results[:settings.top_k], "reranked": req.rerank}
@@ -95,7 +110,7 @@ async def reverse_image_query(req: ImgQueryRequest):
             image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
         chunk_input = ChunkInput(image_base64=image_b64)
-        results = image_query(chunk_input, False)
+        results = image_query(chunk_input, False, req.directories)
         results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
         return {"results": results}
