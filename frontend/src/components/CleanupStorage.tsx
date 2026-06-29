@@ -7,7 +7,7 @@ import {
   useCallback,
 } from "react";
 import type { TransitionEvent } from "react";
-import { Check, X, Trash2, Loader2 } from "lucide-react";
+import { Check, X, Trash2, Loader2, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { addRecentlyOpened } from "./RecentlyOpened";
 import {
   readDuplicateSimilarityThreshold,
@@ -216,12 +216,14 @@ export default function DuplicateGraph() {
 
   const [hasFailed, setHasFailed] = useState(false); // Track if a retry is active
   const activePageRef = useRef<number>(0); // Ensure retries match the current page
+  const [currentPage, setCurrentPage] = useState(0);
 
   // --- DATA FETCHING ---
   const fetchPage = useCallback(async (page: number) => {
     setIsLoading(true);
     setHasFailed(false);
     activePageRef.current = page;
+    setCurrentPage(page);
     
     // Reset local UI states
     setGraphNodes([]);
@@ -291,6 +293,18 @@ export default function DuplicateGraph() {
 
     performFetch();
   }, []);
+
+  const handleSync = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/duplicates/dupe_sync`, { method: "POST" });
+      if (!res.ok) throw new Error("Sync failed");
+    } catch (err) {
+      console.error("Failed to sync duplicates", err);
+      toast.error("Failed to sync duplicates");
+    }
+    fetchPage(currentPage);
+  };
 
   // Fetch initial page on mount
   useEffect(() => {
@@ -532,6 +546,41 @@ export default function DuplicateGraph() {
           </p>
         </div>
       )}
+
+      {/* Top-right Controls: Pagination & Sync */}
+      <div className="absolute top-4 right-4 z-[60] flex items-center gap-1 rounded-xl border border-border bg-surface-elevated/90 p-1.5 shadow-soft backdrop-blur-md dark:bg-surface-elevated/90">
+        <button
+          type="button"
+          onClick={() => fetchPage(Math.max(0, currentPage - 1))}
+          disabled={currentPage === 0 || isLoading || isCalculating}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Previous Page"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <span className="min-w-[4rem] text-center text-sm font-medium text-foreground">
+          Page {currentPage + 1}
+        </span>
+        <button
+          type="button"
+          onClick={() => fetchPage(currentPage + 1)}
+          disabled={isLoading || isCalculating || graphNodes.length === 0}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Next Page"
+        >
+          <ChevronRight size={18} />
+        </button>
+        <div className="mx-1 h-5 w-px bg-border" />
+        <button
+          type="button"
+          onClick={handleSync}
+          disabled={isLoading || isCalculating}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Sync / Refresh"
+        >
+          <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+        </button>
+      </div>
 
       {(!isLoading && !isCalculating) && graphNodes.length > 0 && (
         <>
