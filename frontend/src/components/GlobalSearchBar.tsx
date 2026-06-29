@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { IconImageSearch, IconSearch } from "./icons";
+import { useRef, useState } from "react";
+import { IconImageSearch, IconSearch, IconFolder } from "./icons";
 import { API_URL } from "../config";
 import toast from "react-hot-toast";
 
@@ -22,19 +22,22 @@ export function GlobalSearchBar({
   onSearchFailed,
 }: GlobalSearchBarProps) {
   const activeRequestId = useRef(0);
+  const [selectedDirectories, setSelectedDirectories] = useState<string[]>([]);
 
   const runReverseImageSearch = async (selectedPath: string) => {
     const requestId = ++activeRequestId.current;
     onSearchStart(selectedPath);
+    
+    const payload: any = { path: selectedPath };
+    if (selectedDirectories.length > 0) payload.directories = selectedDirectories;
+
     try {
       let res = await fetch(`${API_URL}/api/image/query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          path: selectedPath,
-        }),
+        body: JSON.stringify(payload),
       });
 
       // Compatibility fallback for current backend route naming.
@@ -44,9 +47,7 @@ export function GlobalSearchBar({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            path: selectedPath,
-          }),
+          body: JSON.stringify(payload),
         });
       }
 
@@ -83,11 +84,35 @@ export function GlobalSearchBar({
     }
   };
 
+  const handleDirectoryPicker = async () => {
+    if (window.electron?.ipcRenderer) {
+      try {
+        const pickedPath = await window.electron.ipcRenderer.invoke("open-directory-picker");
+        if (!pickedPath) return;
+        if (!selectedDirectories.includes(pickedPath)) {
+            setSelectedDirectories([...selectedDirectories, pickedPath]);
+        }
+      } catch (error) {
+        console.error("Electron directory picker failed:", error);
+        toast.error("Failed to open the directory picker.");
+      }
+    } else {
+        toast.error("Directory selection is only available in the desktop app.");
+    }
+  };
+
+  const removeDirectory = (dir: string) => {
+    setSelectedDirectories(selectedDirectories.filter(d => d !== dir));
+  };
+
   const handleSearch = async () => {
     if (searchValue.trim().length === 0) return;
     const requestId = ++activeRequestId.current;
 
     onSearchStart(searchValue);
+
+    const payload: any = { text: searchValue, rerank: false };
+    if (selectedDirectories.length > 0) payload.directories = selectedDirectories;
 
     try {
       const initialRes = await fetch(`${API_URL}/api/vectors/unified/query`, {
@@ -95,10 +120,7 @@ export function GlobalSearchBar({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          text: searchValue,
-          rerank: false
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!initialRes.ok) {
@@ -114,10 +136,7 @@ export function GlobalSearchBar({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          text: searchValue,
-          rerank: true
-        }),
+        body: JSON.stringify({ ...payload, rerank: true }),
       });
 
       if (!finalRes.ok) {
@@ -179,7 +198,16 @@ export function GlobalSearchBar({
               )}
             </div>
           </div>
-           <button
+          <button
+            type="button"
+            title="Filter by directory"
+            aria-label="Filter by directory"
+            onClick={handleDirectoryPicker}
+            className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-border bg-surface-muted text-foreground-muted transition-all duration-300 ease-material hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]"
+          >
+            <IconFolder className="h-6 w-6" />
+          </button>
+          <button
             type="button"
             title="Reverse image search"
             aria-label="Attach or search by image"
@@ -196,6 +224,30 @@ export function GlobalSearchBar({
             Search
           </button>
         </form>
+        {selectedDirectories.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selectedDirectories.map((dir, idx) => {
+              const dirName = dir.split(/[/\\]/).pop() || dir;
+              return (
+                <div key={idx} className="flex items-center gap-1.5 rounded-full bg-surface-muted border border-border px-3 py-1.5 text-sm text-foreground shadow-sm">
+                  <IconFolder className="h-4 w-4 text-foreground-muted" />
+                  <span className="max-w-[150px] truncate" title={dir}>{dirName}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => removeDirectory(dir)}
+                    className="ml-1 rounded-full p-0.5 text-foreground-muted transition hover:bg-border hover:text-foreground"
+                    aria-label="Remove directory"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6 6 18" />
+                      <path d="m6 6 12 12" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -34,12 +34,16 @@ class ChromaDBImpl():
             metadatas=metadatas,
         )
 
-    def query(self, embedding: list[float], k: int) -> list[dict[str, Any]]:
-        results = self.collection.query(
-            query_embeddings=[embedding],
-            n_results=k,
-            include=["metadatas", "distances", "documents"]
-        )
+    def query(self, embedding: list[float], k: int, where: dict = None) -> list[dict[str, Any]]:
+        kwargs = {
+            "query_embeddings": [embedding],
+            "n_results": k,
+            "include": ["metadatas", "distances", "documents"]
+        }
+        if where:
+            kwargs["where"] = where
+            
+        results = self.collection.query(**kwargs)
         
         ids = results["ids"][0]
         metas = results["metadatas"][0]    # list of metadata dicts (may be empty dicts)

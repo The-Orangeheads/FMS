@@ -134,6 +134,16 @@ class EmbeddingService:
             
         return self.loaded_models[model_key]
 
+    def clear_all_models(self):
+        """Clears all loaded models from memory to force a reload on the next query."""
+        self.loaded_models.clear()
+        import gc
+        import torch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        print("All models cleared from memory.")
+
     def process_embeddings(self, model_name: str, chunks: List[ChunkInput], notify_cb=None, display_name: str = "", startPercent: int=0, endPercent: int=0) -> EmbeddingResponse:
         start_time = time.time()
         

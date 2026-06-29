@@ -25,13 +25,30 @@ class SearchService:
             return None
         return 1 / (1 + math.exp(-((raw_logit - DISPLAY_SHIFT) / DISPLAY_TEMP)))
     
-    def collect_unique_candidates(self, query):
+    def collect_unique_candidates(self, query, directories=None):
         query_embedding = embedding_service.get_query_embedding(query, model_name="auto")
-        results = self.collection.query(query_embedding, self.top_k * 3) 
+        
+        # If filtering by directory, retrieve a larger pool of candidates to filter in-memory
+        query_k = self.top_k * 50 if directories else self.top_k * 3
+                
+        results = self.collection.query(query_embedding, query_k) 
         
         seen = {}
         for r in results:
             path = r["metadata"].get("path", "unknown")
+            
+            if directories:
+                normalized_path = path.replace("\\", "/")
+                matched = False
+                for d in directories:
+                    d_norm = d.replace("\\", "/").rstrip("/")
+                    if normalized_path == d_norm or normalized_path.startswith(d_norm + "/"):
+                        matched = True
+                        break
+                        
+                if not matched:
+                    continue
+                    
             if path not in seen:
                 seen[path] = r
          
@@ -78,8 +95,8 @@ class SearchService:
           })
         return sorted(raw_results, key=lambda x: x["score"], reverse=True)[:self.top_k]
 
-    def search(self, query, rerank: bool = True):
-        unique = self.collect_unique_candidates(query)
+    def search(self, query, rerank: bool = True, directories=None):
+        unique = self.collect_unique_candidates(query, directories=directories)
         if rerank:
             return self.rerank_candidates(query, unique)
         return self.raw_candidates_to_results(unique)
