@@ -7,7 +7,7 @@ import {
   useCallback,
 } from "react";
 import type { TransitionEvent } from "react";
-import { Check, X, Trash2, Loader2 } from "lucide-react";
+import { Check, X, Trash2, Loader2, RefreshCw, ChevronLeft, ChevronRight, Network, List, ChevronDown } from "lucide-react";
 import { addRecentlyOpened } from "./RecentlyOpened";
 import {
   readDuplicateSimilarityThreshold,
@@ -216,12 +216,17 @@ export default function DuplicateGraph() {
 
   const [hasFailed, setHasFailed] = useState(false); // Track if a retry is active
   const activePageRef = useRef<number>(0); // Ensure retries match the current page
+  const [currentPage, setCurrentPage] = useState(0);
+  const [viewMode, setViewMode] = useState<"graph" | "list">("graph");
+  const [minimizedClusters, setMinimizedClusters] = useState<Set<number>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // --- DATA FETCHING ---
   const fetchPage = useCallback(async (page: number) => {
     setIsLoading(true);
     setHasFailed(false);
     activePageRef.current = page;
+    setCurrentPage(page);
     
     // Reset local UI states
     setGraphNodes([]);
@@ -232,6 +237,7 @@ export default function DuplicateGraph() {
     setIsClosingPanel(false);
     setSelectedForDeletion(new Set());
     hadOpenPanelRef.current = false;
+    setMinimizedClusters(new Set());
 
     const performFetch = async () => {
       // If the user has changed the page while we were retrying, stop this loop
@@ -291,6 +297,18 @@ export default function DuplicateGraph() {
 
     performFetch();
   }, []);
+
+  const handleSync = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/duplicates/dupe_sync`, { method: "POST" });
+      if (!res.ok) throw new Error("Sync failed");
+    } catch (err) {
+      console.error("Failed to sync duplicates", err);
+      toast.error("Failed to sync duplicates");
+    }
+    fetchPage(currentPage);
+  };
 
   // Fetch initial page on mount
   useEffect(() => {
@@ -473,6 +491,53 @@ export default function DuplicateGraph() {
     return ids;
   }, [activeNodeId, layoutNodes, graphEdges]);
 
+  const listClusters = useMemo(() => {
+    const adj = new Map<number, { id: number; similarity: number }[]>();
+    graphNodes.forEach((n) => adj.set(n.id, []));
+    graphEdges.forEach((e) => {
+      if (e.similarity >= duplicateThreshold) {
+        adj.get(e.source)?.push({ id: e.target, similarity: e.similarity });
+        adj.get(e.target)?.push({ id: e.source, similarity: e.similarity });
+      }
+    });
+
+    const visited = new Set<number>();
+    const clusters: { nodes: (FileNode & { maxSimilarity: number })[] }[] = [];
+
+    graphNodes.forEach((n) => {
+      if (!visited.has(n.id)) {
+        const clusterNodes: (FileNode & { maxSimilarity: number })[] = [];
+        const q = [n.id];
+        visited.add(n.id);
+
+        while (q.length > 0) {
+          const curId = q.shift()!;
+          const nodeData = graphNodes.find((nd) => nd.id === curId);
+          if (!nodeData) continue;
+          
+          let maxSim = 0;
+          if (adj.get(curId)) {
+            const sims = adj.get(curId)!.map(e => e.similarity);
+            if (sims.length > 0) maxSim = Math.max(...sims);
+          }
+          
+          clusterNodes.push({ ...nodeData, maxSimilarity: maxSim });
+
+          adj.get(curId)?.forEach((neighbor) => {
+            if (!visited.has(neighbor.id)) {
+              visited.add(neighbor.id);
+              q.push(neighbor.id);
+            }
+          });
+        }
+        
+        clusters.push({ nodes: clusterNodes.sort((a, b) => b.size - a.size) });
+      }
+    });
+
+    return clusters.sort((a, b) => b.nodes.length - a.nodes.length);
+  }, [graphNodes, graphEdges, duplicateThreshold]);
+
   // --- HANDLERS ---
   const handleNodeClick = (id: number) => {
     if (id === activeNodeId) {
@@ -497,12 +562,78 @@ export default function DuplicateGraph() {
     setSelectedForDeletion(newSet);
   };
 
+  const toggleClusterSelection = (clusterIndex: number, selectAll: boolean) => {
+    const newSet = new Set(selectedForDeletion);
+    const cluster = listClusters[clusterIndex];
+    if (selectAll) {
+      cluster.nodes.forEach(n => newSet.add(n.id));
+    } else {
+      cluster.nodes.forEach(n => newSet.delete(n.id));
+    }
+    setSelectedForDeletion(newSet);
+  };
+
+  const toggleCluster = (index: number) => {
+    const newSet = new Set(minimizedClusters);
+    if (newSet.has(index)) newSet.delete(index);
+    else newSet.add(index);
+    setMinimizedClusters(newSet);
+  };
+
+  const handleDelete = async () => {
+    if (selectedForDeletion.size === 0 || isDeleting) return;
+    
+    // Get paths of selected nodes
+    const filePaths = Array.from(selectedForDeletion).map(id => {
+      const node = graphNodes.find(n => n.id === id);
+      return node?.path;
+    }).filter(Boolean) as string[];
+
+    if (filePaths.length === 0) return;
+
+    if (!window.electron?.ipcRenderer) {
+      toast.error("Electron IPC not available");
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const result = await window.electron.ipcRenderer.invoke('delete-files', filePaths);
+      
+      if (result?.ok) {
+        toast.success(`Moved ${filePaths.length} file(s) to trash`);
+        
+        // Optimistically remove deleted nodes
+        setGraphNodes(prev => prev.filter(n => !selectedForDeletion.has(n.id)));
+        setGraphEdges(prev => prev.filter(e => !selectedForDeletion.has(e.source) && !selectedForDeletion.has(e.target)));
+        
+        // If panel was open and the display node was deleted, close panel
+        if (displayNode && selectedForDeletion.has(displayNode.id)) {
+          setPanelShown(false);
+          setDisplayNode(null);
+          setActiveNodeId(null);
+        }
+        
+        setSelectedForDeletion(new Set());
+        // Trigger a background resync just in case
+        window.fetch("/api/duplicates/dupe_sync", { method: "POST" }).catch(() => {});
+      } else {
+        toast.error(`Failed to delete files: ${result?.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      toast.error("Failed to communicate with the OS");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
-    <div
-      ref={graphRef}
-      className="isolate relative h-150 w-full overflow-hidden rounded-ui border border-border bg-surface-muted/50 text-foreground shadow-soft dark:bg-surface-muted/30"
-    >
-      <div className="pointer-events-none absolute -left-1/4 -top-1/4 h-1/2 w-1/2 rounded-full bg-primary/8 blur-3xl dark:bg-primary/15" />
+    <div className="flex flex-col gap-3 w-full h-full">
+      <div
+        ref={graphRef}
+        className="isolate relative h-150 w-full overflow-hidden rounded-ui border border-border bg-surface-muted/50 text-foreground shadow-soft dark:bg-surface-muted/30"
+      >
+        <div className="pointer-events-none absolute -left-1/4 -top-1/4 h-1/2 w-1/2 rounded-full bg-primary/8 blur-3xl dark:bg-primary/15" />
       <div className="pointer-events-none absolute -bottom-1/4 -right-1/4 h-3/5 w-3/5 rounded-full bg-surface-elevated/80 blur-3xl dark:bg-surface-elevated/20" />
 
     {/* LOADING STATE */}
@@ -533,7 +664,121 @@ export default function DuplicateGraph() {
         </div>
       )}
 
-      {(!isLoading && !isCalculating) && graphNodes.length > 0 && (
+      {(!isLoading && !isCalculating) && graphNodes.length > 0 && viewMode === "list" && (
+        <>
+          <div className="absolute inset-0 z-10 overflow-y-auto p-4 sm:p-6 pb-24 bg-surface-muted/20 scrollbar-hidden">
+            <div className="mx-auto max-w-5xl space-y-6 mt-4">
+              {listClusters.map((cluster, i) => {
+                const clusterSize = cluster.nodes.reduce((sum, n) => sum + n.size, 0);
+                const allSelected = cluster.nodes.every(n => selectedForDeletion.has(n.id));
+                const isMinimized = minimizedClusters.has(i);
+
+                return (
+                  <div key={i} className="rounded-xl border border-border bg-surface-elevated shadow-card overflow-hidden">
+                    <div className="bg-surface-muted/50 px-4 py-3 border-b border-border flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleCluster(i)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-elevated text-foreground-muted ring-1 ring-border transition-all hover:bg-surface-muted hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          title={isMinimized ? "Expand cluster" : "Collapse cluster"}
+                        >
+                          <ChevronDown size={16} className={`transition-transform duration-300 ease-in-out ${isMinimized ? '-rotate-90' : ''}`} />
+                        </button>
+                        <h3 className="font-semibold text-foreground text-sm">Cluster {i + 1} <span className="text-foreground-muted font-normal">({cluster.nodes.length} files)</span></h3>
+                        <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary">
+                          {formatBytes(clusterSize)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleClusterSelection(i, !allSelected)}
+                        className="flex h-7 items-center justify-center rounded-full bg-surface-elevated px-3 text-xs font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-muted hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {allSelected ? "Deselect All" : "Select All"}
+                      </button>
+                    </div>
+                    <div 
+                      className="grid transition-all duration-300 ease-in-out"
+                      style={{ gridTemplateRows: isMinimized ? '0fr' : '1fr' }}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="divide-y divide-border">
+                        {cluster.nodes.map(node => {
+                          const isSelected = selectedForDeletion.has(node.id);
+                          return (
+                            <div key={node.id} className={`flex items-start gap-4 p-4 transition-colors ${isSelected ? "bg-primary/[0.07]" : "hover:bg-surface-muted/30"}`}>
+                              <button
+                                type="button"
+                                onClick={() => toggleSelection(node.id)}
+                                className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+                                  ${isSelected ? "bg-primary text-on-primary" : "border-2 border-border text-transparent hover:border-primary/60"}
+                                `}
+                              >
+                                <Check size={14} strokeWidth={3} />
+                              </button>
+                              
+                              <CleanupThumb path={node.path} containerClass="h-12 w-12 rounded-lg border border-border bg-surface-muted shrink-0" iconClass="h-6 w-6 text-foreground-muted opacity-40" />
+                              
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2 mb-1">
+                                  <h4 className="truncate text-sm font-medium text-foreground" title={node.name}>{node.name}</h4>
+                                </div>
+                                <p className="truncate text-xs text-foreground-muted mb-2" title={node.path}>{node.path}</p>
+                                <div className="flex items-center gap-3 text-xs text-foreground-muted">
+                                  <span className="font-medium bg-surface-muted px-2 py-0.5 rounded">{formatBytes(node.size)}</span>
+                                  <span className="font-medium bg-surface-muted px-2 py-0.5 rounded">{formatDate(node.date)}</span>
+                                  <div className="flex-1" />
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!window.electron?.ipcRenderer || !node.path) return;
+                                      try {
+                                        const result = await window.electron.ipcRenderer.invoke("open-file-in-os", node.path);
+                                        if (!result?.ok) toast.error("Could not open file.");
+                                        else addRecentlyOpened(node.path);
+                                      } catch (error) {
+                                        toast.error("Failed to communicate with the operating system.");
+                                      }
+                                    }}
+                                    className="flex h-7 items-center justify-center rounded-full bg-surface-elevated px-3 text-xs font-medium text-foreground ring-1 ring-border transition-colors hover:bg-surface-muted hover:text-primary active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  >
+                                    Open
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {selectedForDeletion.size > 0 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-4 rounded-xl border border-border bg-surface-elevated/95 shadow-card backdrop-blur-md p-2">
+              <div className="px-3 text-sm font-medium text-foreground">
+                {selectedForDeletion.size} selected ({formatBytes(totalSelectedSize)})
+              </div>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-70 disabled:cursor-wait"
+              >
+                {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {(!isLoading && !isCalculating) && graphNodes.length > 0 && viewMode === "graph" && (
         <>
           {/* Main Canvas Legend */}
           <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2 rounded-xl border border-border bg-surface-elevated/90 p-3 text-xs shadow-soft backdrop-blur-md dark:bg-surface-elevated/90">
@@ -666,7 +911,7 @@ export default function DuplicateGraph() {
 
       <div
         ref={panelRef}
-        className="absolute top-3 bottom-3 z-20 flex w-[min(22rem,calc(100%-1.5rem))] max-w-[440px] flex-col overflow-hidden rounded-xl border border-border bg-surface-elevated/95 shadow-card backdrop-blur-md dark:bg-surface-elevated/95"
+        className={`absolute top-3 bottom-3 z-20 flex w-[min(22rem,calc(100%-1.5rem))] max-w-[440px] flex-col overflow-hidden rounded-xl border border-border bg-surface-elevated/95 shadow-card backdrop-blur-md dark:bg-surface-elevated/95 ${viewMode === "list" ? "hidden" : ""}`}
         onTransitionEnd={handlePanelTransitionEnd}
         style={{
           left: PANEL_PAD,
@@ -734,7 +979,7 @@ export default function DuplicateGraph() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4 scrollbar-hidden">
               <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground-muted">
                 Potential duplicates ({adjacentData.length})
               </h3>
@@ -817,17 +1062,75 @@ export default function DuplicateGraph() {
             <div className="shrink-0 border-t border-border bg-surface-elevated/90 p-3 sm:p-4 dark:bg-surface-elevated/90">
               <button
                 type="button"
-                disabled={selectedForDeletion.size === 0}
+                onClick={handleDelete}
+                disabled={selectedForDeletion.size === 0 || isDeleting}
                 className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all duration-300 ease-material focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                  ${selectedForDeletion.size > 0 ? "bg-primary text-on-primary shadow-soft hover:brightness-110 active:scale-[0.99]" : "cursor-not-allowed bg-surface-muted text-foreground-muted"}
+                  ${selectedForDeletion.size > 0 && !isDeleting ? "bg-primary text-on-primary shadow-soft hover:brightness-110 active:scale-[0.99]" : "cursor-not-allowed bg-surface-muted text-foreground-muted"}
                 `}
               >
-                <Trash2 size={17} />
-                Delete selected ({selectedForDeletion.size}) - {formatBytes(totalSelectedSize)}
+                {isDeleting ? <Loader2 size={17} className="animate-spin" /> : <Trash2 size={17} />}
+                {isDeleting ? "Deleting..." : `Delete selected (${selectedForDeletion.size}) - ${formatBytes(totalSelectedSize)}`}
               </button>
             </div>
           </>
         )}
+      </div>
+    </div>
+
+      {/* Controls below the duplicate detection panel */}
+      <div className="flex w-full items-center justify-end">
+        <div className="flex items-center gap-1 rounded-xl border border-border bg-surface-elevated/90 p-1.5 shadow-soft dark:bg-surface-elevated/90">
+          <div className="flex items-center gap-1 bg-surface-muted rounded-lg p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("graph")}
+              className={`flex h-7 w-8 items-center justify-center rounded-md transition-colors ${viewMode === "graph" ? "bg-surface-elevated text-primary shadow-sm" : "text-foreground-muted hover:text-foreground"}`}
+              title="Graph View"
+            >
+              <Network size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`flex h-7 w-8 items-center justify-center rounded-md transition-colors ${viewMode === "list" ? "bg-surface-elevated text-primary shadow-sm" : "text-foreground-muted hover:text-foreground"}`}
+              title="List View"
+            >
+              <List size={16} />
+            </button>
+          </div>
+          <div className="mx-1 h-5 w-px bg-border" />
+          <button
+            type="button"
+            onClick={() => fetchPage(Math.max(0, currentPage - 1))}
+            disabled={currentPage === 0 || isLoading || isCalculating}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Previous Page"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <span className="min-w-[4rem] text-center text-sm font-medium text-foreground">
+            Page {currentPage + 1}
+          </span>
+          <button
+            type="button"
+            onClick={() => fetchPage(currentPage + 1)}
+            disabled={isLoading || isCalculating || graphNodes.length === 0}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Next Page"
+          >
+            <ChevronRight size={18} />
+          </button>
+          <div className="mx-1 h-5 w-px bg-border" />
+          <button
+            type="button"
+            onClick={handleSync}
+            disabled={isLoading || isCalculating}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Sync / Refresh"
+          >
+            <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
     </div>
   );

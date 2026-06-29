@@ -101,6 +101,22 @@ ipcMain.handle('read-file-buffer', async (_event, filePath) => {
   }
 });
 
+ipcMain.handle('delete-files', async (_event, filePaths) => {
+  if (!Array.isArray(filePaths)) return { ok: false, error: 'Invalid arguments' };
+  
+  const results = [];
+  for (const filePath of filePaths) {
+    try {
+      await shell.trashItem(filePath);
+      results.push({ path: filePath, ok: true });
+    } catch (error) {
+      console.error(`Failed to delete ${filePath}:`, error);
+      results.push({ path: filePath, ok: false, error: error.message });
+    }
+  }
+  return { ok: true, results };
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
