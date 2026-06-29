@@ -7,7 +7,7 @@ import easyocr
 
 class OCR:
     def __init__(self):
-        self.reader = easyocr.Reader(["en"], gpu=torch.cuda.is_available())
+        self.reader = easyocr.Reader(["en", "ar"], gpu=torch.cuda.is_available())
 
     def extract_text(self, image: bytes) -> str:
         try:
