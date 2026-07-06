@@ -1,170 +1,144 @@
 """
-Layout-aware OCR for FMS text ingestion.
+Client-side proxy for the isolated PaddleOCR worker process.
 
-Routes each image through RapidLayout (CDLA) when document geometry is detected,
-then runs RapidOCR on cropped regions sequentially to preserve reading order.
-Falls back to full-image RapidOCR for scene text (receipts, signs, photos).
+Public interface unchanged from the previous ONNX-based HybridOCREngine:
+    engine = HybridOCREngine()
+    text = engine.extract_text(image_bytes)
+
+Internally, this spawns app/core/ocr_worker.py as a separate OS process
+(subprocess.Popen -- NOT multiprocessing.Process, to avoid Windows'
+spawn-based re-import of __main__) and talks to it over a local
+multiprocessing.connection socket. This keeps PaddlePaddle's CUDA/cuDNN
+runtime fully isolated from PyTorch's, which the main app loads directly
+elsewhere (see app/api/vector_db_controller.py) -- the two collide if
+loaded into the same process on Windows.
 """
 
-import io
 import logging
-import re
-from typing import Any, List
-
-import numpy as np
-from PIL import Image
-
-from app.core.config import settings
+import secrets
+import subprocess
+import sys
+import threading
+import time
+from multiprocessing.connection import Client
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SKIP_LAYOUT_LABELS = frozenset({"header", "footer"})
-_ARABIC_RE = re.compile(r"[\u0600-\u06FF]")
-_LATIN_RE = re.compile(r"[A-Za-z]")
-
-
-def _merge_bilingual(en_text: str, ar_text: str) -> str:
-    en_text = en_text.strip()
-    ar_text = ar_text.strip()
-
-    if not en_text and not ar_text:
-        return ""
-    if en_text == ar_text:
-        return en_text
-
-    parts: List[str] = []
-    if en_text and (_LATIN_RE.search(en_text) or not _ARABIC_RE.search(en_text)):
-        parts.append(en_text)
-    if ar_text and _ARABIC_RE.search(ar_text):
-        parts.append(ar_text)
-
-    if not parts:
-        return en_text or ar_text
-    return " ".join(parts)
-
-
-def _build_rapidocr(lang_rec):
-    from rapidocr import LangDet, LangRec, ModelType, OCRVersion, RapidOCR
-
-    return RapidOCR(
-        params={
-            "Det.lang_type": LangDet.MULTI,
-            "Det.model_type": ModelType.MOBILE,
-            "Det.ocr_version": OCRVersion.PPOCRV4,
-            "Rec.lang_type": lang_rec,
-            "Rec.model_type": ModelType.MOBILE,
-            "Rec.ocr_version": OCRVersion.PPOCRV5,
-        }
-    )
-
-
-def _parse_ocr_result(ocr_result: Any) -> str:
-    if ocr_result is None:
-        return ""
-
-    if hasattr(ocr_result, "txts") and ocr_result.txts:
-        return " ".join(ocr_result.txts)
-
-    if isinstance(ocr_result, tuple) and len(ocr_result) >= 1:
-        res_list = ocr_result[0]
-        if isinstance(res_list, list):
-            return " ".join(str(line[1]) for line in res_list if len(line) > 1)
-
-    if isinstance(ocr_result, list) and ocr_result:
-        return " ".join(str(line[1]) for line in ocr_result if len(line) > 1)
-
-    return ""
-
-
-def _parse_layout_blocks(layout_out: Any) -> List[dict]:
-    if layout_out is None:
-        return []
-
-    blocks: List[dict] = []
-
-    if hasattr(layout_out, "boxes"):
-        categories = getattr(
-            layout_out, "class_names", getattr(layout_out, "labels", None)
-        )
-        if categories is not None:
-            for box, cat in zip(layout_out.boxes, categories):
-                blocks.append({"bbox": box, "label": str(cat).lower()})
-    elif isinstance(layout_out, tuple) and len(layout_out) >= 3:
-        for box, cat in zip(layout_out[0], layout_out[2]):
-            blocks.append({"bbox": box, "label": str(cat).lower()})
-
-    return blocks
+_WORKER_SCRIPT = Path(__file__).parent / "ocr_worker.py"
+# Generous timeout: first run in a fresh venv/cache can involve downloading
+# several ONNX models (layout + multilingual det + EN rec + AR rec), which
+# can easily exceed 2 minutes on a slow connection. Subsequent runs with
+# models already cached should be much faster (seconds, not minutes).
+_STARTUP_TIMEOUT_SEC = 600
+_REQUEST_TIMEOUT_SEC = 60
 
 
 class HybridOCREngine:
-    def __init__(self):
-        logging.getLogger("RapidOCR").setLevel(logging.ERROR)
+    def __init__(self, port: int = 0, backend: str = "rapidocr"):
+        """backend: 'rapidocr' (RapidLayout + bilingual RapidOCR, ONNX GPU)
+        or 'paddle' (native LayoutDetection + bilingual PaddleOCR, GPU)."""
+        self._authkey = secrets.token_hex(16)
+        self._port = port or 8765
+        self._address = ("127.0.0.1", self._port)
+        self._backend = backend
 
-        from rapid_layout import RapidLayout
-        from rapidocr import LangRec
+        logger.info("Spawning isolated OCR worker process (backend=%s)...", backend)
+        self._proc = subprocess.Popen(
+            [sys.executable, "-u", str(_WORKER_SCRIPT), str(self._port), self._authkey, backend],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
 
-        logger.info("Loading Hybrid OCR (RapidLayout + EN/AR RapidOCR ONNX)...")
-        self.layout_engine = RapidLayout()
-        self.en_engine = _build_rapidocr(LangRec.EN)
-        self.ar_engine = _build_rapidocr(LangRec.ARABIC)
-        logger.info("Hybrid OCR ready (English + Arabic PP-OCRv5).")
+        self._output_lines = []
+        self._output_thread = threading.Thread(
+            target=self._stream_worker_output, daemon=True
+        )
+        self._output_thread.start()
+
+        self._conn = self._connect_with_retry()
+        self._handshake()
+        logger.info("PaddleOCR worker ready (pid=%s).", self._proc.pid)
+
+    def _stream_worker_output(self):
+        """Runs in a background thread for the process lifetime, forwarding
+        the worker's stdout/stderr to this process's logger in real time
+        (instead of only being visible after the process exits)."""
+        if not self._proc.stdout:
+            return
+        for line in self._proc.stdout:
+            line = line.rstrip("\n")
+            self._output_lines.append(line)
+            print(f"[ocr_worker pid={self._proc.pid}] {line}", flush=True)
+
+    def _connect_with_retry(self):
+        deadline = time.monotonic() + _STARTUP_TIMEOUT_SEC
+        last_err = None
+
+        while time.monotonic() < deadline:
+            if self._proc.poll() is not None:
+                # Worker died during startup -- surface its buffered output
+                # (can't re-read stdout here, it's already being consumed by
+                # the streaming thread).
+                output = "\n".join(self._output_lines)
+                raise RuntimeError(
+                    f"OCR worker process exited early (code {self._proc.returncode}).\n"
+                    f"Worker output:\n{output}"
+                )
+            try:
+                return Client(self._address, authkey=self._authkey.encode("utf-8"))
+            except (ConnectionRefusedError, OSError) as e:
+                last_err = e
+                time.sleep(0.5)
+
+        raise TimeoutError(
+            f"OCR worker did not become ready within {_STARTUP_TIMEOUT_SEC}s.\n"
+            f"Worker output so far:\n" + "\n".join(self._output_lines)
+        ) from last_err
+
+    def _handshake(self):
+        self._conn.send(("ping", None))
+        status, payload = self._conn.recv()
+        if status != "ok" or not isinstance(payload, dict) or not payload.get("pong"):
+            raise RuntimeError(f"Unexpected handshake response: {status!r}, {payload!r}")
+
+        # Trust the worker's own reported PID over subprocess.Popen's PID --
+        # on this machine psutil.Process(self._proc.pid) was found to point
+        # at a near-empty process, not the one actually holding the loaded
+        # models. Getting the PID from the process itself sidesteps whatever
+        # Windows-specific process-tracking quirk causes that mismatch.
+        self.worker_pid = payload.get("pid", self._proc.pid)
 
     def extract_text(self, image: bytes) -> str:
         try:
-            pil_img = Image.open(io.BytesIO(image)).convert("RGB")
-        except Exception as e:
-            raise Exception(f"Error loading image: {e}") from e
+            self._conn.send(("extract", image))
+            status, payload = self._conn.recv()
+        except (EOFError, BrokenPipeError, ConnectionResetError) as e:
+            raise RuntimeError("Lost connection to OCR worker process") from e
 
+        if status == "error":
+            raise Exception(f"Error running OCR: {payload}")
+        return payload
+
+    def close(self):
         try:
-            return self._extract_from_pil(pil_img)
-        except Exception as e:
-            raise Exception(f"Error running OCR: {e}") from e
-
-    def _extract_from_pil(self, pil_img: Image.Image) -> str:
-        img_np = np.array(pil_img)
-
-        try:
-            layout_out = self.layout_engine(img_np)
+            self._conn.send(("shutdown", None))
+            self._conn.recv()
         except Exception:
-            layout_out = None
+            pass
+        finally:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            if self._proc.poll() is None:
+                self._proc.terminate()
+                try:
+                    self._proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    self._proc.kill()
 
-        layout_blocks = _parse_layout_blocks(layout_out)
-
-        if not layout_blocks:
-            return self._ocr_image(img_np)
-
-        return self._ocr_layout_blocks(img_np, layout_blocks)
-
-    def _ocr_image(self, img_np: np.ndarray) -> str:
-        en_text = _parse_ocr_result(self.en_engine(img_np))
-        ar_text = _parse_ocr_result(self.ar_engine(img_np))
-        return _merge_bilingual(en_text, ar_text)
-
-    def _ocr_layout_blocks(self, img_np: np.ndarray, layout_blocks: List[dict]) -> str:
-        h, w, _ = img_np.shape
-        pad = settings.ocr_crop_padding
-
-        extracted_chunks: List[str] = []
-
-        for block in layout_blocks:
-            bbox = block.get("bbox")
-            label = block.get("label", "text")
-
-            if bbox is None or label in SKIP_LAYOUT_LABELS:
-                continue
-
-            x1 = max(0, int(bbox[0]) - pad)
-            y1 = max(0, int(bbox[1]) - pad)
-            x2 = min(w, int(bbox[2]) + pad)
-            y2 = min(h, int(bbox[3]) + pad)
-
-            if x2 <= x1 or y2 <= y1:
-                continue
-
-            cropped = img_np[y1:y2, x1:x2]
-            text = self._ocr_image(cropped)
-            
-            if text:
-                extracted_chunks.append(text)
-
-        return "\n\n".join(extracted_chunks)
+    def __del__(self):
+        self.close()

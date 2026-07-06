@@ -10,7 +10,7 @@ from app.core.hybrid_ocr_engine import HybridOCREngine
 
 class OCR:
     def __init__(self):
-        self._engine = HybridOCREngine()
+        self._engine = HybridOCREngine(backend="paddle")
 
     def extract_text(self, image: bytes) -> str:
         return self._engine.extract_text(image)

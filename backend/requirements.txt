@@ -1,13 +1,13 @@
 chromadb==1.5.5
 fastapi==0.135.3
-PyMuPDF==0.0.1.dev2
+# PyMuPDF==0.0.1.dev2
 pandas==3.0.2
 pdfplumber==0.11.9
 Pillow==12.2.0
 pydantic==2.12.5
 pydantic_settings==2.13.1
 sentence_transformers==5.2.0
-torch==2.10.0+cu128
+# torch==2.10.0+cu128
 transformers==5.3.0
 bitsandbytes==0.45.0
 accelerate==1.4.0
