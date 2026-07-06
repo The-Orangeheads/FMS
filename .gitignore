@@ -149,3 +149,5 @@ models/
 *.temp
 
 .venv
+
+.hf_cache
