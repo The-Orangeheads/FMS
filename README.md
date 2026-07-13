@@ -1,7 +1,11 @@
 # Lexica: AI-Powered File Management System
 
 <p align="center">
-  <img src="frontend/src/assets/logo_dark.svg" alt="Lexica Logo" width="150" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="frontend/src/assets/logo_dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="frontend/src/assets/logo_light.svg">
+    <img alt="Lexica Logo" src="frontend/src/assets/logo_light.svg" width="150" />
+  </picture>
 </p>
 
 Lexica is a cross-platform desktop application that provides entirely offline, on-device semantic search and organization for documents, images, and PDFs. It utilizes multilingual embedding models and format-aware extraction to let users search their local files by content, meaning, and visual similarity, while automatically detecting near-duplicate files to optimize storage.
